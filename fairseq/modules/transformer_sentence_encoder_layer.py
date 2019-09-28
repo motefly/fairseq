@@ -54,7 +54,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         )
 
         # new added
-        self.normalize_before = args.encoder_normalize_before
+        self.normalize_before = encoder_normalize_before
         
         # layer norm associated with the self attention layer
         self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
