@@ -164,7 +164,7 @@ class TransformerSentenceEncoder(nn.Module):
             freeze_module_params(self.embed_tokens)
             freeze_module_params(self.segment_embeddings)
             freeze_module_params(self.embed_positions)
-            freeze_module_params(self.emb_layer_norm)
+            # freeze_module_params(self.emb_layer_norm)
 
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
@@ -193,8 +193,8 @@ class TransformerSentenceEncoder(nn.Module):
         if self.segment_embeddings is not None and segment_labels is not None:
             x += self.segment_embeddings(segment_labels)
 
-        if self.emb_layer_norm is not None:
-            x = self.emb_layer_norm(x)
+#         if self.emb_layer_norm is not None:
+#             x = self.emb_layer_norm(x)
 
         x = F.dropout(x, p=self.dropout, training=self.training)
 
