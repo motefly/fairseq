@@ -75,6 +75,8 @@ class TransformerSentenceEncoderLayer(nn.Module):
         modules similar to the original Transformer imlementation.
         """
         residual = x
+        # new added
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
         x, attn = self.self_attn(
             query=x,
             key=x,
@@ -85,16 +87,18 @@ class TransformerSentenceEncoderLayer(nn.Module):
         )
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
-        x = self.self_attn_layer_norm(x)
+        # change 
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
+        # x = self.self_attn_layer_norm(x)
 
         residual = x
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
+        x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
         x = self.activation_fn(self.fc1(x))
         x = F.dropout(x, p=self.activation_dropout, training=self.training)
         x = self.fc2(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
-        x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
+        x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
 #         x = self.final_layer_norm(x)
         return x, attn
     
