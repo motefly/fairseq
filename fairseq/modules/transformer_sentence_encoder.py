@@ -139,6 +139,8 @@ class TransformerSentenceEncoder(nn.Module):
                     add_bias_kv=add_bias_kv,
                     add_zero_attn=add_zero_attn,
                     export=export,
+                    # new added
+                    encoder_normalize_before=encoder_normalize_before,
                 )
                 for _ in range(num_encoder_layers)
             ]
