@@ -257,7 +257,8 @@ class RobertaEncoder(FairseqDecoder):
             activation_dropout=args.activation_dropout,
             max_seq_len=args.max_positions,
             num_segments=0,
-            encoder_normalize_before=True,
+            # encoder_normalize_before=True,
+            encoder_normalize_before=args.encoder_normalize_before,
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
