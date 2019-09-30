@@ -14,6 +14,7 @@ from fairseq.data import (
     encoders,
     IdDataset,
     MaskTokensDataset,
+    MaskTokensDataset2,
     NestedDictionaryDataset,
     NumelDataset,
     NumSamplesDataset,
@@ -128,15 +129,15 @@ class MaskedLMTask(FairseqTask):
         else:
             mask_whole_words = None
 
-        src_dataset, tgt_dataset = MaskTokensDataset.apply_mask(
+        src_dataset, tgt_dataset = MaskTokensDataset2.apply_mask(
             dataset,
             self.source_dictionary,
             pad_idx=self.source_dictionary.pad(),
             mask_idx=self.mask_idx,
             seed=self.args.seed,
-            mask_prob=self.args.mask_prob,
-            leave_unmasked_prob=self.args.leave_unmasked_prob,
-            random_token_prob=self.args.random_token_prob,
+            # mask_prob=self.args.mask_prob,
+            # leave_unmasked_prob=self.args.leave_unmasked_prob,
+            # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,
             mask_whole_words=mask_whole_words,
         )

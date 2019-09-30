@@ -21,8 +21,9 @@ class MaskedLmLoss(FairseqCriterion):
 
     def __init__(self, args, task):
         super().__init__(args, task)
+        # self.args = args
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, lamda=0.5):
         """Compute the loss for the given sample.
         Returns a tuple with three elements:
         1) the loss
@@ -38,22 +39,59 @@ class MaskedLmLoss(FairseqCriterion):
         if sample_size == 0:
             masked_tokens = None
 
-        logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
-        targets = model.get_targets(sample, [logits])
+        # import pdb
+        # pdb.set_trace()
 
-        if sample_size != 0:
-            targets = targets[masked_tokens]
+        # logits = model(**sample['net_input'], masked_tokens=masked_tokens)
+        logits = model(**sample['net_input'], masked_tokens=None)
+        if(isinstance(logits[0], tuple)):
+            logits1 = logits[0][0]
+            logits2 = logits[0][1]
 
-        loss = F.nll_loss(
-            F.log_softmax(
-                logits.view(-1, logits.size(-1)),
-                dim=-1,
-                dtype=torch.float32,
-            ),
-            targets.view(-1),
-            reduction='sum',
-            ignore_index=self.padding_idx,
-        )
+            targets = model.get_targets(sample, [logits1])
+
+            # if sample_size != 0:
+            #     targets = targets[masked_tokens]
+
+            loss1 = F.nll_loss(
+                F.log_softmax(
+                    logits1.view(-1, logits1.size(-1)),
+                    dim=-1,
+                    dtype=torch.float32,
+                ),
+                targets.view(-1),
+                reduction='sum',
+                ignore_index=self.padding_idx,
+            )
+            loss2 = F.nll_loss(
+                F.log_softmax(
+                    logits2.view(-1, logits2.size(-1)),
+                    dim=-1,
+                    dtype=torch.float32,
+                ),
+                targets.view(-1),
+                reduction='sum',
+                ignore_index=self.padding_idx,
+            )
+            loss = lamda * loss1 + (1-lamda) * loss2
+
+        else:
+            targets = model.get_targets(sample, [logits])
+
+            if sample_size != 0:
+                targets = targets[masked_tokens]
+
+            loss = F.nll_loss(
+                F.log_softmax(
+                    logits.view(-1, logits.size(-1)),
+                    dim=-1,
+                    dtype=torch.float32,
+                ),
+                targets.view(-1),
+                reduction='sum',
+                ignore_index=self.padding_idx,
+            )
+
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
             'nll_loss': utils.item(loss.data) if reduce else loss.data,

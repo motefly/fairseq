@@ -21,6 +21,7 @@ from .list_dataset import ListDataset
 from .lm_context_window_dataset import LMContextWindowDataset
 from .lru_cache_dataset import LRUCacheDataset
 from .mask_tokens_dataset import MaskTokensDataset
+from .mask_tokens_dataset_2 import MaskTokensDataset2
 from .monolingual_dataset import MonolingualDataset
 from .nested_dictionary_dataset import NestedDictionaryDataset
 from .noising import NoisingDataset

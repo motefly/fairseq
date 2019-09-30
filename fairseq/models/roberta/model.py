@@ -20,11 +20,13 @@ from fairseq.models import (
 from fairseq.modules import (
     LayerNorm,
     TransformerSentenceEncoder,
+    MultiheadAttention,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 from .hub_interface import RobertaHubInterface
 
+use_cuda = torch.cuda.is_available()
 
 @register_model('roberta')
 class RobertaModel(FairseqLanguageModel):
@@ -93,6 +95,8 @@ class RobertaModel(FairseqLanguageModel):
         return cls(args, encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
+        # import pdb
+        # pdb.set_trace()
         if classification_head_name is not None:
             features_only = True
 
@@ -214,6 +218,61 @@ class RobertaLMHead(nn.Module):
         x = F.linear(x, self.weight) + self.bias
         return x
 
+class RobertaLMHead2(nn.Module):
+    """Head for masked language modeling."""
+
+    def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
+        super().__init__()
+        self.dense = nn.Linear(embed_dim, embed_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.layer_norm = LayerNorm(embed_dim)
+        #self.output_dim = output_dim
+
+        self.self_attn = MultiheadAttention(
+            embed_dim,
+            num_heads = 8,
+            # num_attention_heads,
+            # dropout=attention_dropout,
+            # add_bias_kv=add_bias_kv,
+            # add_zero_attn=add_zero_attn,
+            self_attention=True
+        )
+        if weight is None:
+            weight = nn.Linear(embed_dim, output_dim, bias=False).weight
+        self.weight = weight
+        self.bias = nn.Parameter(torch.zeros(output_dim))
+
+    def forward(self, features, args, **kwargs):
+        # Only project the unmasked tokens while training,
+        # saves both memory and computation
+        # import pdb
+        # pdb.set_trace()
+        # if masked_tokens is not None:
+        #     features = features[masked_tokens, :]
+        attn_mask = torch.eye(features.size(0)) * -1e8
+        if use_cuda:
+            attn_mask = attn_mask.cuda()
+        if args.fp16:
+            attn_mask = attn_mask.half()
+        
+        x = features
+        x, attn = self.self_attn(
+            query=x,
+            key=x,
+            value=x,
+            # key_padding_mask=self_attn_padding_mask,
+            need_weights=False,
+            attn_mask=attn_mask,
+        )
+        x = self.activation_fn(x)
+        x = self.layer_norm(x)
+
+        x = self.dense(x)
+        x = self.activation_fn(x)
+        x = self.layer_norm(x)
+        # project back to size of vocabulary with bias
+        x = F.linear(x, self.weight) + self.bias
+        return x#.view(-1, self.output_dim)
 
 class RobertaClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
@@ -233,7 +292,6 @@ class RobertaClassificationHead(nn.Module):
         x = self.dropout(x)
         x = self.out_proj(x)
         return x
-
 
 class RobertaEncoder(FairseqDecoder):
     """RoBERTa encoder.
@@ -264,6 +322,12 @@ class RobertaEncoder(FairseqDecoder):
             activation_fn=args.activation_fn,
         )
         self.lm_head = RobertaLMHead(
+            embed_dim=args.encoder_embed_dim,
+            output_dim=len(dictionary),
+            activation_fn=args.activation_fn,
+            weight=self.sentence_encoder.embed_tokens.weight,
+        )
+        self.lm_head2 = RobertaLMHead2(
             embed_dim=args.encoder_embed_dim,
             output_dim=len(dictionary),
             activation_fn=args.activation_fn,
@@ -300,7 +364,7 @@ class RobertaEncoder(FairseqDecoder):
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
     def output_layer(self, features, masked_tokens=None, **unused):
-        return self.lm_head(features, masked_tokens)
+        return self.lm_head(features, masked_tokens), self.lm_head2(features, args=self.args)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
