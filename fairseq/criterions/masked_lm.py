@@ -76,6 +76,7 @@ class MaskedLmLoss(FairseqCriterion):
             loss = lamda * loss1 + (1-lamda) * loss2
 
         else:
+            logits = logits[0]
             targets = model.get_targets(sample, [logits])
 
             if sample_size != 0:

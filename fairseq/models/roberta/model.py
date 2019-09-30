@@ -242,20 +242,21 @@ class RobertaLMHead2(nn.Module):
         self.weight = weight
         self.bias = nn.Parameter(torch.zeros(output_dim))
 
-    def forward(self, features, args, **kwargs):
+    def forward(self, x, args, **kwargs):
         # Only project the unmasked tokens while training,
         # saves both memory and computation
         # import pdb
         # pdb.set_trace()
         # if masked_tokens is not None:
         #     features = features[masked_tokens, :]
-        attn_mask = torch.eye(features.size(0)) * -1e8
+        x = x.transpose(0,1)
+
+        attn_mask = torch.eye(x.size(0)) * -1e8
         if use_cuda:
             attn_mask = attn_mask.cuda()
         if args.fp16:
             attn_mask = attn_mask.half()
-        
-        x = features
+
         x, attn = self.self_attn(
             query=x,
             key=x,
@@ -267,6 +268,7 @@ class RobertaLMHead2(nn.Module):
         x = self.activation_fn(x)
         x = self.layer_norm(x)
 
+        x = x.transpose(0,1)
         x = self.dense(x)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
