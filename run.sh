@@ -17,7 +17,7 @@ DATA_DIR=data-bin/wikitext-103
        --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
        --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
        --max-sentences $MAX_SENTENCES --update-freq $UPDATE_FREQ \
-       --max-update $TOTAL_UPDATES --log-format simple --log-interval 1 --save-interval-updates 10000 --keep-interval-updates 10\
+       --max-update $TOTAL_UPDATES --log-format simple --log-interval 1 --save-interval-updates 10000 --keep-interval-updates 10 -loss-lamda 0.5 \
        --encoder-normalize-before --skip-invalid-size-inputs-valid-test --tensorboard-logdir tsb_log --log-format tqdm --new-method #--cuda_ext 
      #   --distributed-world-size 16 --distributed-rank 12 --distributed-init-method "tcp://10.0.10.4:8080"\
        
