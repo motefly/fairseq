@@ -225,6 +225,9 @@ def batch_by_size(
     max_sentences = max_sentences if max_sentences is not None else sys.maxsize
     bsz_mult = required_batch_size_multiple
 
+    # import pdb
+    # pdb.set_trace()
+
     if isinstance(indices, types.GeneratorType):
         indices = np.fromiter(indices, dtype=np.int64, count=-1)
 

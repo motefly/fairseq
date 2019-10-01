@@ -92,6 +92,9 @@ class MaskedLMTask(FairseqTask):
         if dataset is None:
             raise FileNotFoundError('Dataset not found: {} ({})'.format(split, split_path))
 
+        # import pdb
+        # pdb.set_trace()
+
         # create continuous blocks of tokens
         dataset = TokenBlockDataset(
             dataset,
@@ -129,6 +132,22 @@ class MaskedLMTask(FairseqTask):
         else:
             mask_whole_words = None
 
+        # item = dataset[0].numpy()
+        # vocab_num = len(self.source_dictionary)
+        # out = np.array([np.concatenate([np.array([item[i]]), np.random.randint(0, item[i], int(item[i]/vocab_num*1023)), np.random.randint(item[i]+1, vocab_num, 1023-int(item[i]/vocab_num*1023))+item[i]+1]) for i in range(len(item))])
+        
+        # src_dataset, tgt_dataset = MaskTokensDataset.apply_mask(
+        #     dataset,
+        #     self.source_dictionary,
+        #     pad_idx=self.source_dictionary.pad(),
+        #     mask_idx=self.mask_idx,
+        #     seed=self.args.seed,
+        #     mask_prob=self.args.mask_prob,
+        #     leave_unmasked_prob=self.args.leave_unmasked_prob,
+        #     random_token_prob=self.args.random_token_prob,
+        #     freq_weighted_replacement=self.args.freq_weighted_replacement,
+        #     mask_whole_words=mask_whole_words,
+        # )
         src_dataset, tgt_dataset = MaskTokensDataset2.apply_mask(
             dataset,
             self.source_dictionary,
@@ -141,7 +160,6 @@ class MaskedLMTask(FairseqTask):
             freq_weighted_replacement=self.args.freq_weighted_replacement,
             mask_whole_words=mask_whole_words,
         )
-
         with data_utils.numpy_seed(self.args.seed + epoch):
             shuffle = np.random.permutation(len(src_dataset))
 
@@ -172,6 +190,8 @@ class MaskedLMTask(FairseqTask):
                 src_dataset.sizes,
             ],
         )
+        # import pdb
+        # pdb.set_trace()
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, sort=True):
         src_dataset = PadDataset(

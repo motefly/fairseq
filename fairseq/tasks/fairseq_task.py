@@ -151,6 +151,9 @@ class FairseqTask(object):
             required_batch_size_multiple=required_batch_size_multiple,
         )
 
+        # import pdb
+        # pdb.set_trace()
+
         # return a reusable, sharded iterator
         epoch_iter = iterators.EpochBatchIterator(
             dataset=dataset,
@@ -243,6 +246,7 @@ class FairseqTask(object):
         if ignore_grad:
             loss *= 0
         optimizer.backward(loss)
+        # torch.cuda.empty_cache()
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):

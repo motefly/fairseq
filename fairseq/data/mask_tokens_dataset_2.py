@@ -47,8 +47,8 @@ class MaskTokensDataset2(BaseWrapperDataset):
         """Return the source and target datasets for masked LM training."""
         dataset = LRUCacheDataset(dataset)
         return (
-            LRUCacheDataset(cls(dataset, *args, **kwargs, return_masked_tokens=True)),
-            LRUCacheDataset(cls(dataset, *args, **kwargs, return_masked_tokens=True)),
+            LRUCacheDataset(cls(dataset, *args, **kwargs, return_masked_tokens=False)),
+            LRUCacheDataset(cls(dataset, *args, **kwargs, return_masked_tokens=False)),
         )
 
     def __init__(
@@ -121,14 +121,20 @@ class MaskTokensDataset2(BaseWrapperDataset):
             # )
             # mask[np.random.choice(sz, num_mask, replace=False)] = True
 
-            # if self.return_masked_tokens:
-            #     # exit early if we're just returning the masked tokens
-            #     # (i.e., the targets for masked LM training)
-            #     if self.mask_whole_words is not None:
-            #         mask = np.repeat(mask, word_lens)
-            #     new_item = np.full(len(mask), self.pad_idx)
-            #     new_item[mask] = item[torch.from_numpy(mask.astype(np.uint8)) == 1]
-            #     return torch.from_numpy(new_item)
+            if self.return_masked_tokens:
+                # exit early if we're just returning the masked tokens
+                # (i.e., the targets for masked LM training)
+                # if self.mask_whole_words is not None:
+                #     mask = np.repeat(mask, word_lens)
+                # new_item = np.full(len(mask), self.pad_idx)
+                # new_item[mask] = item[torch.from_numpy(mask.astype(np.uint8)) == 1]
+                # return torch.from_numpy(new_item)
+                # import pdb
+                # pdb.set_trace()
+                vocab_num = len(self.vocab)
+                targets = np.copy(item)
+                out = np.array([np.concatenate([np.array([targets[i]]), np.random.randint(0, targets[i], int(targets[i]/vocab_num*1023)), np.random.randint(targets[i]+1, vocab_num, 1023-int(targets[i]/vocab_num*1023))+targets[i]+1]) for i in range(len(targets))])
+                return torch.from_numpy(out)
 
             # decide unmasking and random replacement
             # rand_or_unmask_prob = self.random_token_prob + self.leave_unmasked_prob
