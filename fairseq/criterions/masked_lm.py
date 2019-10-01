@@ -19,10 +19,11 @@ class MaskedLmLoss(FairseqCriterion):
     """
     Implementation for the loss used in masked language model (MLM) training.
     """
-
     def __init__(self, args, task):
         super().__init__(args, task)
         self.vocab_num = len(task.dictionary)
+        self.neg_sample = args.neg_sample
+        self.new_method = args.new_method
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -30,52 +31,34 @@ class MaskedLmLoss(FairseqCriterion):
         1) the loss
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
-        """
-        # compute MLM loss
-        masked_tokens = sample['target'].ne(self.padding_idx)
-        sample_size = masked_tokens.int().sum().item()
-
-        # (Rare case) When all tokens are masked, the model results in empty
-        # tensor and gives CUDA error.
-        if sample_size == 0:
-            masked_tokens = None
-            
-        if model.training:
-            # logits = model(**sample['net_input'], masked_tokens=masked_tokens)
-            targets = model.get_targets(sample).cpu()
-            items = np.copy(targets.view(-1))
-            
-            # print(items.shape, np.unique(items).shape)
-            vocab_num = self.vocab_num
-            # out = np.array([np.concatenate([np.array([items[i]]), np.random.randint(0, items[i], int(items[i]/vocab_num*511)), np.random.randint(items[i]+1, vocab_num, 511-int(items[i]/vocab_num*511))]) for i in range(len(items))])
-            strange = np.setdiff1d(np.arange(vocab_num), items)
-            hav = np.unique(items)
-            sample_sz = min(max(2*hav.shape[0], 2048),8192) - hav.shape[0]
-            out = np.concatenate([hav, np.random.choice(strange, sample_sz, replace=False)])
-            tab = np.ones(vocab_num,dtype=np.int32)*-1
-            for idx,item in enumerate(out):
-                tab[item] = idx
-            for idx,item in enumerate(items):
-                items[idx] = tab[item]
-            
-            logits = model(**sample['net_input'], masked_tokens=torch.from_numpy(out).cuda().long())
-        else:
-            logits = model(**sample['net_input'], masked_tokens=None)
-        if (isinstance(logits[0], tuple)):
-
-            targets = torch.from_numpy(items).cuda().long() #model.get_targets(sample, [logits1])
+        """    
+        if self.new_method:
+            if self.neg_sample and model.training:
+                targets = model.get_targets(sample).cpu()
+                items = np.copy(targets.view(-1))
+                
+                vocab_num = self.vocab_num
+                strange = np.setdiff1d(np.arange(vocab_num), items)
+                hav = np.unique(items)
+                sample_sz = min(max(2*hav.shape[0], 2048),8192) - hav.shape[0]
+                out = np.concatenate([hav, np.random.choice(strange, sample_sz, replace=False)])
+                tab = np.ones(vocab_num,dtype=np.int32)*-1
+                for idx,item in enumerate(out):
+                    tab[item] = idx
+                for idx,item in enumerate(items):
+                    items[idx] = tab[item]
+                padding_idx = int(tab[self.padding_idx])
+                
+                logits = model(**sample['net_input'], masked_tokens=torch.from_numpy(out).cuda().long())
+                targets = torch.from_numpy(items).cuda().long()
+                
+            else:
+                padding_idx = self.padding_idx
+                logits = model(**sample['net_input'], masked_tokens=None)
+                targets = model.get_targets(sample)
 
             logits1 = logits[0][0]
             logits2 = logits[0][1]
-
-            # print(logits1.shape)
-
-
-            # if sample_size != 0:
-            #     targets = targets[masked_tokens]
-
-            # import pdb
-            # pdb.set_trace()
             
             loss1 = F.nll_loss(
                 F.log_softmax(
@@ -85,9 +68,9 @@ class MaskedLmLoss(FairseqCriterion):
                 ),
                 targets.view(-1),
                 reduction='sum',
-                ignore_index=int(tab[self.padding_idx]),
+                ignore_index=padding_idx,
                 )
-            # loss = loss1
+            
             loss2 = F.nll_loss(
                 F.log_softmax(
                     logits2.view(-1, logits2.size(-1)),
@@ -96,12 +79,20 @@ class MaskedLmLoss(FairseqCriterion):
                 ),
                 targets.view(-1),
                 reduction='sum',
-                ignore_index=int(tab[self.padding_idx]),
+                ignore_index=padding_idx,
             )
             loss = loss1 + loss2
 
         else:
-            logits = logits[0]
+            # compute MLM loss
+            masked_tokens = sample['target'].ne(self.padding_idx)
+            sample_size = masked_tokens.int().sum().item()
+
+            # (Rare case) When all tokens are masked, the model results in empty
+            # tensor and gives CUDA error.
+            if sample_size == 0:
+                masked_tokens = None
+            logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
 
             if sample_size != 0:
                 targets = targets[masked_tokens]

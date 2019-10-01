@@ -80,6 +80,8 @@ class RobertaModel(FairseqLanguageModel):
                             help='number of positional embeddings to learn')
         parser.add_argument('--load-checkpoint-heads', action='store_true',
                             help='(re-)register and load heads when loading checkpoints')
+        # parser.add_argument('--new-method', action='store_true',
+        #                     help='use ')
 
     @classmethod
     def build_model(cls, args, task):
@@ -231,25 +233,25 @@ class RobertaLMHead4(nn.Module):
         if weight is None:
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight_emb = weight
-        self.bias = nn.Embedding(
+        self.bias_emb = nn.Embedding(
             vocab_size, 1, padding_idx
         )
 
     def forward(self, features, masked_tokens=None, **kwargs):
-        # Only project the unmasked tokens while training,
-        # saves both memory and computation
-        # if masked_tokens is not None:
-        #     features = features[masked_tokens, :]
-
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
         # project back to size of vocabulary with bias
-        weight = self.weight_emb(masked_tokens)
+        if masked_tokens is not None:
+            weight = self.weight_emb(masked_tokens)
+            bias = self.bias_emb(masked_tokens).view(-1)
+        else:
+            weight = self.weight_emb.weight
+            bias = self.bias_emb.weight.view(-1)
         # import pdb
         # pdb.set_trace()
         # x = torch.bmm(weight, x) + self.bias(masked_tokens)
-        x = F.linear(x, weight) + self.bias(masked_tokens).view(-1)
+        x = F.linear(x, weight) + bias
         return x
 
 class RobertaLMHead2(nn.Module):
@@ -280,17 +282,11 @@ class RobertaLMHead2(nn.Module):
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight_emb = weight
         # self.bias = nn.Parameter(torch.zeros(output_dim))
-        self.bias = nn.Embedding(
+        self.bias_emb = nn.Embedding(
             vocab_size, 1, padding_idx
         )
 
     def forward(self, x, masked_tokens, **kwargs):
-        # Only project the unmasked tokens while training,
-        # saves both memory and computation
-        # import pdb
-        # pdb.set_trace()
-        # if masked_tokens is not None:
-        #     features = features[masked_tokens, :]
         x = x.transpose(0,1)
 
         attn_mask = self.attn_mask[:x.size(0), :x.size(0)]
@@ -311,9 +307,14 @@ class RobertaLMHead2(nn.Module):
         x = self.activation_fn(x)
         x = self.layer_norm(x)
         # project back to size of vocabulary with bias
-        weight = self.weight_emb(masked_tokens)
-        x = F.linear(x, weight) + self.bias(masked_tokens).view(-1)
-        return x#.view(-1, self.output_dim)
+        if masked_tokens is not None:
+            weight = self.weight_emb(masked_tokens)
+            bias = self.bias_emb(masked_tokens).view(-1)
+        else:
+            weight = self.weight_emb.weight
+            bias = self.bias_emb.weight.view(-1)
+        x = F.linear(x, weight) + bias
+        return x
 
 class RobertaLMHead3(nn.Module):
     """Head for masked language modeling."""
@@ -411,6 +412,7 @@ class RobertaEncoder(FairseqDecoder):
         super().__init__(dictionary)
         args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
         self.args = args
+        self.new_method = args.new_method
         self.sentence_encoder = TransformerSentenceEncoder(
             padding_idx=dictionary.pad(),
             vocab_size=len(dictionary),
@@ -428,40 +430,33 @@ class RobertaEncoder(FairseqDecoder):
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
-        # self.lm_head = RobertaLMHead(
-        #     embed_dim=args.encoder_embed_dim,
-        #     output_dim=len(dictionary),
-        #     activation_fn=args.activation_fn,
-        #     weight=self.sentence_encoder.embed_tokens.weight,
-        # )
-        self.lm_head4 = RobertaLMHead4(
-            embed_dim=args.encoder_embed_dim,
-            output_dim=len(dictionary),
-            activation_fn=args.activation_fn,
-            weight=self.sentence_encoder.embed_tokens,
-            padding_idx=dictionary.pad(),
-            vocab_size=len(dictionary),
-        )
-        self.lm_head2 = RobertaLMHead2(
-            embed_dim=args.encoder_embed_dim,
-            output_dim=len(dictionary),
-            num_attention_heads=args.encoder_attention_heads,
-            activation_fn=args.activation_fn,
-            fp16=args.fp16,
-            max_positions=args.max_positions,
-            weight=self.sentence_encoder.embed_tokens,
-            padding_idx=dictionary.pad(),
-            vocab_size=len(dictionary),
-        )
-        # self.lm_head3 = RobertaLMHead3(
-        #     embed_dim=args.encoder_embed_dim,
-        #     output_dim=len(dictionary),
-        #     num_attention_heads=args.encoder_attention_heads,
-        #     activation_fn=args.activation_fn,
-        #     fp16=args.fp16,
-        #     max_positions=args.max_positions,
-        #     weight=self.sentence_encoder.embed_tokens.weight,
-        # )
+        if not self.new_method:
+            self.lm_head = RobertaLMHead(
+                embed_dim=args.encoder_embed_dim,
+                output_dim=len(dictionary),
+                activation_fn=args.activation_fn,
+                weight=self.sentence_encoder.embed_tokens.weight,
+            )
+        else:
+            self.lm_head4 = RobertaLMHead4(
+                embed_dim=args.encoder_embed_dim,
+                output_dim=len(dictionary),
+                activation_fn=args.activation_fn,
+                weight=self.sentence_encoder.embed_tokens,
+                padding_idx=dictionary.pad(),
+                vocab_size=len(dictionary),
+            )
+            self.lm_head2 = RobertaLMHead2(
+                embed_dim=args.encoder_embed_dim,
+                output_dim=len(dictionary),
+                num_attention_heads=args.encoder_attention_heads,
+                activation_fn=args.activation_fn,
+                fp16=args.fp16,
+                max_positions=args.max_positions,
+                weight=self.sentence_encoder.embed_tokens,
+                padding_idx=dictionary.pad(),
+                vocab_size=len(dictionary),
+            )
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
         """
@@ -493,8 +488,10 @@ class RobertaEncoder(FairseqDecoder):
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
     def output_layer(self, features, masked_tokens=None, **unused):
-        return self.lm_head4(features, masked_tokens),self.lm_head2(features, masked_tokens)
-        # return self.lm_head3(features)#, masked_tokens)#, self.lm_head2(features)
+        if self.new_method:
+            return self.lm_head4(features, masked_tokens),self.lm_head2(features, masked_tokens)
+        else:
+            return self.lm_head(features, masked_tokens)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""

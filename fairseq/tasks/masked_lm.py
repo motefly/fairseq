@@ -55,6 +55,8 @@ class MaskedLMTask(FairseqTask):
                             help='sample random replacement words based on word frequencies')
         parser.add_argument('--mask-whole-words', default=False, action='store_true',
                             help='mask whole words; you may also want to set --bpe')
+        parser.add_argument('--new-method', default=False, action='store_true',
+                            help='mark whether using new method or not')
 
     def __init__(self, args, dictionary):
         super().__init__(args)
@@ -132,34 +134,32 @@ class MaskedLMTask(FairseqTask):
         else:
             mask_whole_words = None
 
-        # item = dataset[0].numpy()
-        # vocab_num = len(self.source_dictionary)
-        # out = np.array([np.concatenate([np.array([item[i]]), np.random.randint(0, item[i], int(item[i]/vocab_num*1023)), np.random.randint(item[i]+1, vocab_num, 1023-int(item[i]/vocab_num*1023))+item[i]+1]) for i in range(len(item))])
-        
-        # src_dataset, tgt_dataset = MaskTokensDataset.apply_mask(
-        #     dataset,
-        #     self.source_dictionary,
-        #     pad_idx=self.source_dictionary.pad(),
-        #     mask_idx=self.mask_idx,
-        #     seed=self.args.seed,
-        #     mask_prob=self.args.mask_prob,
-        #     leave_unmasked_prob=self.args.leave_unmasked_prob,
-        #     random_token_prob=self.args.random_token_prob,
-        #     freq_weighted_replacement=self.args.freq_weighted_replacement,
-        #     mask_whole_words=mask_whole_words,
-        # )
-        src_dataset, tgt_dataset = MaskTokensDataset2.apply_mask(
-            dataset,
-            self.source_dictionary,
-            pad_idx=self.source_dictionary.pad(),
-            mask_idx=self.mask_idx,
-            seed=self.args.seed,
-            # mask_prob=self.args.mask_prob,
-            # leave_unmasked_prob=self.args.leave_unmasked_prob,
-            # random_token_prob=self.args.random_token_prob,
-            freq_weighted_replacement=self.args.freq_weighted_replacement,
-            mask_whole_words=mask_whole_words,
-        )
+        if not self.args.new_method:        
+            src_dataset, tgt_dataset = MaskTokensDataset.apply_mask(
+                dataset,
+                self.source_dictionary,
+                pad_idx=self.source_dictionary.pad(),
+                mask_idx=self.mask_idx,
+                seed=self.args.seed,
+                mask_prob=self.args.mask_prob,
+                leave_unmasked_prob=self.args.leave_unmasked_prob,
+                random_token_prob=self.args.random_token_prob,
+                freq_weighted_replacement=self.args.freq_weighted_replacement,
+                mask_whole_words=mask_whole_words,
+            )
+        else:
+            src_dataset, tgt_dataset = MaskTokensDataset2.apply_mask(
+                dataset,
+                self.source_dictionary,
+                pad_idx=self.source_dictionary.pad(),
+                mask_idx=self.mask_idx,
+                seed=self.args.seed,
+                # mask_prob=self.args.mask_prob,
+                # leave_unmasked_prob=self.args.leave_unmasked_prob,
+                # random_token_prob=self.args.random_token_prob,
+                freq_weighted_replacement=self.args.freq_weighted_replacement,
+                mask_whole_words=mask_whole_words,
+            )
         with data_utils.numpy_seed(self.args.seed + epoch):
             shuffle = np.random.permutation(len(src_dataset))
 
