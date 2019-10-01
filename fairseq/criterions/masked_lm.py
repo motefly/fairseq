@@ -34,7 +34,7 @@ class MaskedLmLoss(FairseqCriterion):
         """    
         if self.new_method:
             if model.training:
-                items = model.get_targets(sample).cpu().numpy()
+                items = model.get_targets(sample).view(-1).cpu().numpy()
 
                 vocab_num = self.vocab_num
                 strange = np.setdiff1d(np.arange(vocab_num), items)
@@ -81,7 +81,7 @@ class MaskedLmLoss(FairseqCriterion):
                 ignore_index=padding_idx,
             )
             loss = 0.15 * (self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2)
-            sample_size = targets.size(0)
+            sample_size = targets.view(-1).size(0)
 
         else:
             # compute MLM loss
