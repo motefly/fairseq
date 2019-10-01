@@ -23,6 +23,7 @@ class MaskedLmLoss(FairseqCriterion):
         super().__init__(args, task)
         self.vocab_num = len(task.dictionary)
         self.new_method = args.new_method
+        self.loss_lamda = args.loss_lamda
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -48,12 +49,12 @@ class MaskedLmLoss(FairseqCriterion):
                     items[idx] = tab[item]
                 padding_idx = int(tab[self.padding_idx])
                 
-                logits = model(**sample['net_input'], masked_tokens=torch.from_numpy(out).cuda().long())
+                logits = model(**sample['net_input'], helpers=torch.from_numpy(out).cuda().long())
                 targets = torch.from_numpy(items).cuda().long()
                 
             else:
                 padding_idx = self.padding_idx
-                logits = model(**sample['net_input'], masked_tokens=None)
+                logits = model(**sample['net_input'], helpers=None)
                 targets = model.get_targets(sample)
 
             logits1 = logits[0][0]
@@ -80,7 +81,7 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=padding_idx,
             )
-            loss = loss1 + loss2
+            loss = args.loss_lamda * loss1 + (1-args.loss_lamda) * loss2
             sample_size = targets.size(0)
 
         else:

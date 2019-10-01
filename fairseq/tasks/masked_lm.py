@@ -57,6 +57,8 @@ class MaskedLMTask(FairseqTask):
                             help='mask whole words; you may also want to set --bpe')
         parser.add_argument('--new-method', default=False, action='store_true',
                             help='mark whether using new method or not')
+        parser.add_argument('--loss-lamda', default=0.5, type=float,
+                            help='loss trade-off factor for loss1 and loss2')
 
     def __init__(self, args, dictionary):
         super().__init__(args)

@@ -221,47 +221,16 @@ class RobertaLMHead(nn.Module):
         # b = F.linear(x, self.weight) + self.bias
         return a
 
-class RobertaLMHead4(nn.Module):
-    """Head for masked language modeling."""
-
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, padding_idx=1, vocab_size=1):
-        super().__init__()
-        self.dense = nn.Linear(embed_dim, embed_dim)
-        self.activation_fn = utils.get_activation_fn(activation_fn)
-        self.layer_norm = LayerNorm(embed_dim)
-
-        if weight is None:
-            weight = nn.Linear(embed_dim, output_dim, bias=False).weight
-        self.weight_emb = weight
-        self.bias_emb = nn.Embedding(
-            vocab_size, 1, padding_idx
-        )
-
-    def forward(self, features, masked_tokens=None, **kwargs):
-        x = self.dense(features)
-        x = self.activation_fn(x)
-        x = self.layer_norm(x)
-        # project back to size of vocabulary with bias
-        if masked_tokens is not None:
-            weight = self.weight_emb(masked_tokens)
-            bias = self.bias_emb(masked_tokens).view(-1)
-        else:
-            weight = self.weight_emb.weight
-            bias = self.bias_emb.weight.view(-1)
-        # import pdb
-        # pdb.set_trace()
-        # x = torch.bmm(weight, x) + self.bias(masked_tokens)
-        x = F.linear(x, weight) + bias
-        return x
-
-class RobertaLMHead2(nn.Module):
+class NewRobertaLMHead(nn.Module):
     """Head for masked language modeling."""
 
     def __init__(self, embed_dim, output_dim, num_attention_heads, activation_fn, fp16=False, max_positions=512, weight=None, padding_idx=1, vocab_size=1):
         super().__init__()
-        self.dense = nn.Linear(embed_dim, embed_dim)
+        self.dense1 = nn.Linear(embed_dim, embed_dim)
+        self.dense2 = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
-        self.layer_norm = LayerNorm(embed_dim)
+        self.layer_norm1 = LayerNorm(embed_dim)
+        self.layer_norm2 = LayerNorm(embed_dim)
         #self.output_dim = output_dim
 
         self.self_attn = MultiheadAttention(
@@ -286,100 +255,200 @@ class RobertaLMHead2(nn.Module):
             vocab_size, 1, padding_idx
         )
 
-    def forward(self, x, masked_tokens, **kwargs):
-        x = x.transpose(0,1)
-
-        attn_mask = self.attn_mask[:x.size(0), :x.size(0)]
-
-        x, attn = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
+    def forward(self, x, target_samples, **kwargs):
+        x1 = self.dense1(x)
+        x1 = self.activation_fn(x1)
+        x1 = self.layer_norm1(x1)
+        
+        x2 = x.transpose(0,1)
+        attn_mask = self.attn_mask[:x2.size(0), :x2.size(0)]
+        x2, attn = self.self_attn(
+            query=x2,
+            key=x2,
+            value=x2,
             # key_padding_mask=self_attn_padding_mask,
             need_weights=False,
             attn_mask=attn_mask,
         )
-        x = self.activation_fn(x)
-        x = self.layer_norm(x)
+        x2 = self.activation_fn(x2)
+        x2 = self.layer_norm2(x2)
 
-        x = x.transpose(0,1)
-        x = self.dense(x)
-        x = self.activation_fn(x)
-        x = self.layer_norm(x)
-        # project back to size of vocabulary with bias
-        if masked_tokens is not None:
-            weight = self.weight_emb(masked_tokens)
-            bias = self.bias_emb(masked_tokens).view(-1)
+        x2 = x2.transpose(0,1)
+        x2 = self.dense2(x2)
+        x2 = self.activation_fn(x2)
+        x2 = self.layer_norm2(x2)
+
+        if target_samples is not None:
+            weight = self.weight_emb(target_samples)
+            bias = self.bias_emb(target_samples).view(-1)
         else:
             weight = self.weight_emb.weight
             bias = self.bias_emb.weight.view(-1)
-        x = F.linear(x, weight) + bias
-        return x
 
-class RobertaLMHead3(nn.Module):
-    """Head for masked language modeling."""
+        x1 = F.linear(x1, weight) + bias
+        x2 = F.linear(x2, weight) + bias
+        return x1, x2
 
-    def __init__(self, embed_dim, output_dim, num_attention_heads, activation_fn, fp16=False, max_positions=512, weight=None):
-        super().__init__()
-        self.dense = nn.Linear(embed_dim, embed_dim)
-        self.activation_fn = utils.get_activation_fn(activation_fn)
-        self.layer_norm = LayerNorm(embed_dim)
-        #self.output_dim = output_dim
 
-        self.self_attn = MultiheadAttention(
-            embed_dim,
-            num_heads = num_attention_heads,
-            # dropout=attention_dropout,
-            # add_bias_kv=add_bias_kv,
-            # add_zero_attn=add_zero_attn,
-            self_attention=True
-        )
-        self.attn_mask = torch.eye(max_positions) * -1e8
-        if use_cuda:
-            self.attn_mask = self.attn_mask.cuda()
-        if fp16:
-            self.attn_mask = self.attn_mask.half()
+# class RobertaLMHead4(nn.Module):
+#     """Head for masked language modeling."""
+
+#     def __init__(self, embed_dim, output_dim, activation_fn, weight=None, padding_idx=1, vocab_size=1):
+#         super().__init__()
+#         self.dense = nn.Linear(embed_dim, embed_dim)
+#         self.activation_fn = utils.get_activation_fn(activation_fn)
+#         self.layer_norm = LayerNorm(embed_dim)
+
+#         if weight is None:
+#             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
+#         self.weight_emb = weight
+#         self.bias_emb = nn.Embedding(
+#             vocab_size, 1, padding_idx
+#         )
+
+#     def forward(self, features, masked_tokens=None, **kwargs):
+#         x = self.dense(features)
+#         x = self.activation_fn(x)
+#         x = self.layer_norm(x)
+#         # project back to size of vocabulary with bias
+#         if masked_tokens is not None:
+#             weight = self.weight_emb(masked_tokens)
+#             bias = self.bias_emb(masked_tokens).view(-1)
+#         else:
+#             weight = self.weight_emb.weight
+#             bias = self.bias_emb.weight.view(-1)
+#         # import pdb
+#         # pdb.set_trace()
+#         # x = torch.bmm(weight, x) + self.bias(masked_tokens)
+#         x = F.linear(x, weight) + bias
+#         return x
+
+# class RobertaLMHead2(nn.Module):
+#     """Head for masked language modeling."""
+
+#     def __init__(self, embed_dim, output_dim, num_attention_heads, activation_fn, fp16=False, max_positions=512, weight=None, padding_idx=1, vocab_size=1):
+#         super().__init__()
+#         self.dense = nn.Linear(embed_dim, embed_dim)
+#         self.activation_fn = utils.get_activation_fn(activation_fn)
+#         self.layer_norm = LayerNorm(embed_dim)
+#         #self.output_dim = output_dim
+
+#         self.self_attn = MultiheadAttention(
+#             embed_dim,
+#             num_heads = num_attention_heads,
+#             # dropout=attention_dropout,
+#             # add_bias_kv=add_bias_kv,
+#             # add_zero_attn=add_zero_attn,
+#             self_attention=True
+#         )
+#         self.attn_mask = torch.eye(max_positions) * -1e8
+#         if use_cuda:
+#             self.attn_mask = self.attn_mask.cuda()
+#         if fp16:
+#             self.attn_mask = self.attn_mask.half()
         
-        if weight is None:
-            weight = nn.Linear(embed_dim, output_dim, bias=False).weight
-        self.weight = weight
-        self.bias = nn.Parameter(torch.zeros(output_dim))
+#         if weight is None:
+#             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
+#         self.weight_emb = weight
+#         # self.bias = nn.Parameter(torch.zeros(output_dim))
+#         self.bias_emb = nn.Embedding(
+#             vocab_size, 1, padding_idx
+#         )
 
-    def forward(self, x, **kwargs):
-        # Only project the unmasked tokens while training,
-        # saves both memory and computation
-        # import pdb
-        # pdb.set_trace()
-        # if masked_tokens is not None:
-        #     features = features[masked_tokens, :]
-        residual = x
-        x = x.transpose(0,1)
+#     def forward(self, x, masked_tokens, **kwargs):
+#         x = x.transpose(0,1)
 
-        attn_mask = self.attn_mask[:x.size(0), :x.size(0)]
+#         attn_mask = self.attn_mask[:x.size(0), :x.size(0)]
 
-        x, attn = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
-            # key_padding_mask=self_attn_padding_mask,
-            need_weights=False,
-            attn_mask=attn_mask,
-        )
-        x = self.activation_fn(x)
-        x = self.layer_norm(x)
+#         x, attn = self.self_attn(
+#             query=x,
+#             key=x,
+#             value=x,
+#             # key_padding_mask=self_attn_padding_mask,
+#             need_weights=False,
+#             attn_mask=attn_mask,
+#         )
+#         x = self.activation_fn(x)
+#         x = self.layer_norm(x)
 
-        x = x.transpose(0,1)
+#         x = x.transpose(0,1)
+#         x = self.dense(x)
+#         x = self.activation_fn(x)
+#         x = self.layer_norm(x)
+#         # project back to size of vocabulary with bias
+#         if masked_tokens is not None:
+#             weight = self.weight_emb(masked_tokens)
+#             bias = self.bias_emb(masked_tokens).view(-1)
+#         else:
+#             weight = self.weight_emb.weight
+#             bias = self.bias_emb.weight.view(-1)
+#         x = F.linear(x, weight) + bias
+#         return x
 
-        x = torch.cat([residual.reshape(-1,x.size(-1)), x.reshape(-1,x.size(-1))], 0)
-        # import pdb
-        # pdb.set_trace()
+# class RobertaLMHead3(nn.Module):
+#     """Head for masked language modeling."""
 
-        x = self.dense(x)
-        x = self.activation_fn(x)
-        x = self.layer_norm(x)
-        # project back to size of vocabulary with bias
-        x = F.linear(x, self.weight) + self.bias
-        return x[:residual.size(0)*residual.size(1),:], x[residual.size(0)*residual.size(1):,:]#.view(-1, self.output_dim)
+#     def __init__(self, embed_dim, output_dim, num_attention_heads, activation_fn, fp16=False, max_positions=512, weight=None):
+#         super().__init__()
+#         self.dense = nn.Linear(embed_dim, embed_dim)
+#         self.activation_fn = utils.get_activation_fn(activation_fn)
+#         self.layer_norm = LayerNorm(embed_dim)
+#         #self.output_dim = output_dim
+
+#         self.self_attn = MultiheadAttention(
+#             embed_dim,
+#             num_heads = num_attention_heads,
+#             # dropout=attention_dropout,
+#             # add_bias_kv=add_bias_kv,
+#             # add_zero_attn=add_zero_attn,
+#             self_attention=True
+#         )
+#         self.attn_mask = torch.eye(max_positions) * -1e8
+#         if use_cuda:
+#             self.attn_mask = self.attn_mask.cuda()
+#         if fp16:
+#             self.attn_mask = self.attn_mask.half()
+        
+#         if weight is None:
+#             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
+#         self.weight = weight
+#         self.bias = nn.Parameter(torch.zeros(output_dim))
+
+#     def forward(self, x, **kwargs):
+#         # Only project the unmasked tokens while training,
+#         # saves both memory and computation
+#         # import pdb
+#         # pdb.set_trace()
+#         # if masked_tokens is not None:
+#         #     features = features[masked_tokens, :]
+#         residual = x
+#         x = x.transpose(0,1)
+
+#         attn_mask = self.attn_mask[:x.size(0), :x.size(0)]
+
+#         x, attn = self.self_attn(
+#             query=x,
+#             key=x,
+#             value=x,
+#             # key_padding_mask=self_attn_padding_mask,
+#             need_weights=False,
+#             attn_mask=attn_mask,
+#         )
+#         x = self.activation_fn(x)
+#         x = self.layer_norm(x)
+
+#         x = x.transpose(0,1)
+
+#         x = torch.cat([residual.reshape(-1,x.size(-1)), x.reshape(-1,x.size(-1))], 0)
+#         # import pdb
+#         # pdb.set_trace()
+
+#         x = self.dense(x)
+#         x = self.activation_fn(x)
+#         x = self.layer_norm(x)
+#         # project back to size of vocabulary with bias
+#         x = F.linear(x, self.weight) + self.bias
+#         return x[:residual.size(0)*residual.size(1),:], x[residual.size(0)*residual.size(1):,:]#.view(-1, self.output_dim)
 
 
 class RobertaClassificationHead(nn.Module):
@@ -438,15 +507,15 @@ class RobertaEncoder(FairseqDecoder):
                 weight=self.sentence_encoder.embed_tokens.weight,
             )
         else:
-            self.lm_head4 = RobertaLMHead4(
-                embed_dim=args.encoder_embed_dim,
-                output_dim=len(dictionary),
-                activation_fn=args.activation_fn,
-                weight=self.sentence_encoder.embed_tokens,
-                padding_idx=dictionary.pad(),
-                vocab_size=len(dictionary),
-            )
-            self.lm_head2 = RobertaLMHead2(
+            # self.lm_head4 = RobertaLMHead4(
+            #     embed_dim=args.encoder_embed_dim,
+            #     output_dim=len(dictionary),
+            #     activation_fn=args.activation_fn,
+            #     weight=self.sentence_encoder.embed_tokens,
+            #     padding_idx=dictionary.pad(),
+            #     vocab_size=len(dictionary),
+            # )
+            self.lm_head = NewRobertaLMHead(
                 embed_dim=args.encoder_embed_dim,
                 output_dim=len(dictionary),
                 num_attention_heads=args.encoder_attention_heads,
@@ -458,7 +527,7 @@ class RobertaEncoder(FairseqDecoder):
                 vocab_size=len(dictionary),
             )
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, helpers=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -476,7 +545,7 @@ class RobertaEncoder(FairseqDecoder):
         """
         x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
-            x = self.output_layer(x, masked_tokens=masked_tokens)
+            x = self.output_layer(x, helpers=helpers)
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -487,11 +556,8 @@ class RobertaEncoder(FairseqDecoder):
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
-    def output_layer(self, features, masked_tokens=None, **unused):
-        if self.new_method:
-            return self.lm_head4(features, masked_tokens),self.lm_head2(features, masked_tokens)
-        else:
-            return self.lm_head(features, masked_tokens)
+    def output_layer(self, features, helpers=None, **unused):
+        return self.lm_head(features, helpers)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
