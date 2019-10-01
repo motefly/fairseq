@@ -80,7 +80,7 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=padding_idx,
             )
-            loss = 0.15 * self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2
+            loss = 0.15 * (self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2)
             sample_size = targets.size(0)
 
         else:
