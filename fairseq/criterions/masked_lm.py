@@ -35,7 +35,7 @@ class MaskedLmLoss(FairseqCriterion):
         if self.new_method:
             if model.training:
                 items = model.get_targets(sample).cpu().numpy()
-                
+
                 vocab_num = self.vocab_num
                 strange = np.setdiff1d(np.arange(vocab_num), items)
                 hav = np.unique(items)
@@ -109,7 +109,7 @@ class MaskedLmLoss(FairseqCriterion):
                 ignore_index=self.padding_idx,
             )
         
-        print(loss)
+        # print(loss)
 
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
