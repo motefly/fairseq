@@ -109,7 +109,7 @@ class MaskedLmLoss(FairseqCriterion):
                 ignore_index=self.padding_idx,
             )
         
-        print(loss)
+        # print(loss)
 
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
