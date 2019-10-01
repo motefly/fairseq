@@ -22,7 +22,6 @@ class MaskedLmLoss(FairseqCriterion):
     def __init__(self, args, task):
         super().__init__(args, task)
         self.vocab_num = len(task.dictionary)
-        self.neg_sample = args.neg_sample
         self.new_method = args.new_method
 
     def forward(self, model, sample, reduce=True):
@@ -33,7 +32,7 @@ class MaskedLmLoss(FairseqCriterion):
         3) logging outputs to display while training
         """    
         if self.new_method:
-            if self.neg_sample and model.training:
+            if model.training:
                 targets = model.get_targets(sample).cpu()
                 items = np.copy(targets.view(-1))
                 
@@ -82,6 +81,7 @@ class MaskedLmLoss(FairseqCriterion):
                 ignore_index=padding_idx,
             )
             loss = loss1 + loss2
+            sample_size = targets.size(0)
 
         else:
             # compute MLM loss
@@ -93,6 +93,7 @@ class MaskedLmLoss(FairseqCriterion):
             if sample_size == 0:
                 masked_tokens = None
             logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
+            targets = model.get_targets(sample)
 
             if sample_size != 0:
                 targets = targets[masked_tokens]
