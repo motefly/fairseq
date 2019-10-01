@@ -34,8 +34,7 @@ class MaskedLmLoss(FairseqCriterion):
         """    
         if self.new_method:
             if model.training:
-                targets = model.get_targets(sample).cpu()
-                items = np.copy(targets.view(-1))
+                items = model.get_targets(sample).cpu().numpy()
                 
                 vocab_num = self.vocab_num
                 strange = np.setdiff1d(np.arange(vocab_num), items)
