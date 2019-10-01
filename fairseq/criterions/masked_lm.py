@@ -69,7 +69,7 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=padding_idx,
                 )
-            
+            # loss = loss1       
             loss2 = F.nll_loss(
                 F.log_softmax(
                     logits2.view(-1, logits2.size(-1)),
@@ -108,6 +108,8 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=self.padding_idx,
             )
+        
+        print(loss)
 
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
