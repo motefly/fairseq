@@ -251,9 +251,14 @@ class NewRobertaLMHead(nn.Module):
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight_emb = weight
         # self.bias = nn.Parameter(torch.zeros(output_dim))
-        self.bias_emb = nn.Embedding(
+        self.bias_emb1 = nn.Embedding(
             vocab_size, 1, padding_idx
         )
+        self.bias_emb1.weight.data.fill_(0)
+        self.bias_emb2 = nn.Embedding(
+            vocab_size, 1, padding_idx
+        )
+        self.bias_emb2.weight.data.fill_(0)
 
     def forward(self, x, target_samples, **kwargs):
         x1 = self.dense1(x)
@@ -280,13 +285,15 @@ class NewRobertaLMHead(nn.Module):
 
         if target_samples is not None:
             weight = self.weight_emb(target_samples)
-            bias = self.bias_emb(target_samples).view(-1)
+            bias1 = self.bias_emb1(target_samples).view(-1)
+            bias2 = self.bias_emb2(target_samples).view(-1)
         else:
             weight = self.weight_emb.weight
-            bias = self.bias_emb.weight.view(-1)
+            bias1 = self.bias_emb1.weight.view(-1)
+            bias2 = self.bias_emb2.weight.view(-1)
 
-        x1 = F.linear(x1, weight) + bias
-        x2 = F.linear(x2, weight) + bias
+        x1 = F.linear(x1, weight) + bias1
+        x2 = F.linear(x2, weight) + bias2
         return x1, x2
 
 
