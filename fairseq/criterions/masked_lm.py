@@ -112,13 +112,16 @@ class MaskedLmLoss(FairseqCriterion):
         # print(loss)
 
         logging_output = {
-            # temp set loss1 and loss2
-            'loss': utils.item(loss1.data) if reduce else loss1.data,
-            'nll_loss': utils.item(loss2.data) if reduce else loss2.data,
+            'loss': utils.item(loss.data) if reduce else loss.data,
+            'nll_loss': utils.item(loss.data) if reduce else loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
         }
+        if self.new_method:
+            logging_output['loss1'] = utils.item(loss1.data) if reduce else loss1.data
+            logging_output['loss2'] = utils.item(loss2.data) if reduce else loss2.data
+            
         return loss, sample_size, logging_output
 
     @staticmethod
@@ -128,6 +131,9 @@ class MaskedLmLoss(FairseqCriterion):
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
         nsentences = sum(log.get('nsentences', 0) for log in logging_outputs)
         sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
+        if self.new_method:
+            loss1 = sum(log.get('loss1', 0) for log in logging_outputs)
+            loss2 = sum(log.get('loss2', 0) for log in logging_outputs)
 
         agg_output = {
             'loss': loss / sample_size / math.log(2),
@@ -136,4 +142,8 @@ class MaskedLmLoss(FairseqCriterion):
             'nsentences': nsentences,
             'sample_size': sample_size,
         }
+        if self.new_method:
+            agg_output['loss1'] = loss1 / sample_size / math.log(2)
+            agg_output['loss2'] = loss2 / sample_size / math.log(2)
+            
         return agg_output

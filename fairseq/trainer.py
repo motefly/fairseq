@@ -59,13 +59,23 @@ class Trainer(object):
 
         # Fast stats sync avoids memcpy and is 7% faster when tested on 16 nodes.
         # It is less flexible and syncs only the default stats.
-        self._all_reduce_list = [0.0] * 6
+        if self.args.new_method:
+            self._all_reduce_list = [0.0] * 8
+        else:
+            self._all_reduce_list = [0.0] * 6
         self.fast_stat_sync = args.fast_stat_sync
 
         self.init_meters(args)
 
     def init_meters(self, args):
         self.meters = OrderedDict()
+
+        if args.new_method:
+            self.meters['train_loss1'] = AverageMeter()
+            self.meters['train_loss2'] = AverageMeter()
+            self.meters['valid_loss1'] = AverageMeter()
+            self.meters['valid_loss2'] = AverageMeter()
+
         self.meters['train_loss'] = AverageMeter()
         self.meters['train_nll_loss'] = AverageMeter()
         self.meters['valid_loss'] = AverageMeter()
@@ -305,6 +315,10 @@ class Trainer(object):
                         self._all_reduce_list[2] += logging_output.get('loss', 0.0)
                         self._all_reduce_list[3] += logging_output.get('nll_loss', 0.0)
                         self._all_reduce_list[4] += logging_output.get('ntokens', 0.0)
+                        if self.args.new_method:
+                            self._all_reduce_list[5] += logging_output.get('loss1', 0.0)
+                            self._all_reduce_list[6] += logging_output.get('loss2', 0.0)
+
             except RuntimeError as e:
                 if 'out of memory' in str(e):
                     msg = (
@@ -325,7 +339,7 @@ class Trainer(object):
                     raise e
 
             if self.fast_stat_sync:
-                self._all_reduce_list[5] += ooms
+                self._all_reduce_list[-1] += ooms
 
 
         if ooms > 0 and self._oom_batch is not None:
@@ -356,8 +370,13 @@ class Trainer(object):
                 logging_output['loss'],
                 logging_output['nll_loss'],
                 logging_output['ntokens'],
-                ooms,
-            ] = self._all_reduce_list
+            ] = self._all_reduce_list[:5]
+            if self.args.new_method:
+                [
+                    logging_output.get['loss1']
+                    logging_output.get['loss2']
+                ] = self._all_reduce_list[5:-1]
+            ooms = self._all_reduce_list[-1]
         elif self._sync_stats():
             logging_outputs, sample_sizes, ooms, prev_norms = \
                 zip(*distributed_utils.all_gather_list(
@@ -420,6 +439,10 @@ class Trainer(object):
                 1. if grad_norm > self.args.clip_norm and self.args.clip_norm > 0 else 0.
             )
             self.meters['train_loss'].update(logging_output.get('loss', 0), sample_size)
+            if self.args.new_method:
+                self.meters['train_loss1'].update(logging_output.get('loss1', 0), sample_size)
+                self.meters['train_loss2'].update(logging_output.get('loss2', 0), sample_size)
+
             if 'train_acc' in self.meters:
                 self.meters['train_acc'].update(
                     logging_output.get('acc', 0), sample_size)
@@ -494,6 +517,9 @@ class Trainer(object):
         # update meters for validation
         ntokens = logging_output.get('ntokens', 0)
         self.meters['valid_loss'].update(logging_output.get('loss', 0), sample_size)
+        if self.args.new_method:
+            self.meters['valid_loss1'].update(logging_output.get('loss1', 0), sample_size)
+            self.meters['valid_loss2'].update(logging_output.get('loss2', 0), sample_size)
         if 'valid_acc' in self.meters:
             self.meters['valid_acc'].update(
                 logging_output.get('acc', 0), sample_size)
@@ -521,7 +547,10 @@ class Trainer(object):
         self.optimizer.zero_grad()
 
     def clear_buffered_stats(self):
-        self._all_reduce_list = [0.0] * 6
+        if self.args.new_method:
+            self._all_reduce_list = [0.0] * 6
+        else:
+            self._all_reduce_list = [0.0] * 6
 
     def lr_step(self, epoch, val_loss=None):
         """Adjust the learning rate based on the validation loss."""

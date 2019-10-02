@@ -126,7 +126,7 @@ def train(args, trainer, task, epoch_itr):
         # log mid-epoch stats
         stats = get_training_stats(trainer)
         for k, v in log_output.items():
-            if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
+            if k in ['loss', 'loss1', 'loss2', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                 continue  # these are already logged above
             if 'loss' in k or k == 'accuracy':
                 extra_meters[k].update(v, log_output['sample_size'])
@@ -153,23 +153,26 @@ def train(args, trainer, task, epoch_itr):
             break
 
     # log end-of-epoch stats
-    stats = get_training_stats(trainer)
+    stats = get_training_stats(trainer, args)
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
     progress.print(stats, tag='train', step=stats['num_updates'])
 
     # reset training meters
     for k in [
-        'train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'gnorm', 'clip',
+        'train_loss', 'train_loss1', 'train_loss2', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'gnorm', 'clip',
     ]:
         meter = trainer.get_meter(k)
         if meter is not None:
             meter.reset()
 
 
-def get_training_stats(trainer):
+def get_training_stats(trainer, args):
     stats = collections.OrderedDict()
     stats['loss'] = trainer.get_meter('train_loss')
+    if args.new_method:
+        stats['loss1'] = trainer.get_meter('train_loss1')
+        stats['loss2'] = trainer.get_meter('train_loss2')
     if trainer.get_meter('train_nll_loss').count > 0:
         nll_loss = trainer.get_meter('train_nll_loss')
         stats['nll_loss'] = nll_loss
@@ -224,7 +227,7 @@ def validate(args, trainer, task, epoch_itr, subsets):
         )
 
         # reset validation loss meters
-        for k in ['valid_loss', 'valid_nll_loss']:
+        for k in ['valid_loss', 'valid_loss1', 'valid_loss2', 'valid_nll_loss']:
             meter = trainer.get_meter(k)
             if meter is not None:
                 meter.reset()
@@ -234,7 +237,7 @@ def validate(args, trainer, task, epoch_itr, subsets):
             log_output = trainer.valid_step(sample)
 
             for k, v in log_output.items():
-                if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
+                if k in ['loss', 'loss1', 'loss2', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                     continue
                 extra_meters[k].update(v)
 
@@ -255,6 +258,9 @@ def validate(args, trainer, task, epoch_itr, subsets):
 def get_valid_stats(trainer, args, extra_meters=None):
     stats = collections.OrderedDict()
     stats['loss'] = trainer.get_meter('valid_loss')
+    if args.new_method:
+        stats['loss1'] = trainer.get_meter('valid_loss1')
+        stats['loss2'] = trainer.get_meter('valid_loss2')
     if trainer.get_meter('valid_nll_loss').count > 0:
         nll_loss = trainer.get_meter('valid_nll_loss')
         stats['nll_loss'] = nll_loss
