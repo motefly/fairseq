@@ -124,3 +124,5 @@ data-bin/
 /fairseq/data/data_utils_fast.cpp
 /fairseq/data/token_block_utils_fast.cpp
 fairseq_cli/
+checkpoint*
+tsb*

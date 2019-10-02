@@ -76,6 +76,9 @@ def main(args, init_distributed=False):
     train_meter = StopwatchMeter()
     train_meter.start()
     valid_subsets = args.valid_subset.split(',')
+
+    validate(args, trainer, task, epoch_itr, valid_subsets)
+
     while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
         # train for one epoch
         train(args, trainer, task, epoch_itr)
@@ -227,7 +230,10 @@ def validate(args, trainer, task, epoch_itr, subsets):
         )
 
         # reset validation loss meters
-        for k in ['valid_loss', 'valid_nll_loss']:
+        base = ['valid_loss', 'valid_nll_loss']
+        if args.new_method:
+            base += ['valid_loss1', 'valid_loss2']
+        for k in base:
             meter = trainer.get_meter(k)
             if meter is not None:
                 meter.reset()
@@ -237,7 +243,7 @@ def validate(args, trainer, task, epoch_itr, subsets):
             log_output = trainer.valid_step(sample)
 
             for k, v in log_output.items():
-                if k in ['loss', 'loss1', 'loss2' 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
+                if k in ['loss', 'loss1', 'loss2', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                     continue
                 extra_meters[k].update(v)
 

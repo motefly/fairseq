@@ -362,6 +362,14 @@ class Trainer(object):
                     torch.log(torch.cuda.DoubleTensor([2]))
                 )
             )
+            if self.args.new_method:
+                # Normalize loss1 and loss2 by "sample_size"
+                all_reduce_list_tensor[5:-1].div_(
+                    (
+                        all_reduce_list_tensor[0:1] *
+                        torch.log(torch.cuda.DoubleTensor([2]))
+                    )
+                )
             self._all_reduce_list = all_reduce_list_tensor.tolist()
             logging_output = {}
             [

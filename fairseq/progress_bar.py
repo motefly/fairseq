@@ -276,6 +276,7 @@ class tensorboard_log_wrapper(progress_bar):
             step = stats['num_updates']
         for key in stats.keys() - {'num_updates'}:
             if isinstance(stats[key], AverageMeter):
-                writer.add_scalar(key, stats[key].val, step)
+                # writer.add_scalar(key, stats[key].val, step)
+                writer.add_scalar(key, stats[key].avg, step)
             elif isinstance(stats[key], Number):
                 writer.add_scalar(key, stats[key], step)
