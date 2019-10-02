@@ -56,9 +56,9 @@ def format_stat(stat):
     if isinstance(stat, Number):
         stat = '{:g}'.format(stat)
     elif isinstance(stat, AverageMeter):
-        stat = '{:.3f}'.format(stat.avg)
+        stat = '{:.3f}'.format(stat.val)
     elif isinstance(stat, TimeMeter):
-        stat = '{:g}'.format(round(stat.avg))
+        stat = '{:g}'.format(round(stat.val))
     elif isinstance(stat, StopwatchMeter):
         stat = '{:g}'.format(round(stat.sum))
     return stat
@@ -276,7 +276,7 @@ class tensorboard_log_wrapper(progress_bar):
             step = stats['num_updates']
         for key in stats.keys() - {'num_updates'}:
             if isinstance(stats[key], AverageMeter):
-                # writer.add_scalar(key, stats[key].val, step)
-                writer.add_scalar(key, stats[key].avg, step)
+                writer.add_scalar(key, stats[key].val, step)
+                # writer.add_scalar(key, stats[key].avg, step)
             elif isinstance(stats[key], Number):
                 writer.add_scalar(key, stats[key], step)

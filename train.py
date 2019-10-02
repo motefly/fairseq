@@ -83,10 +83,10 @@ def main(args, init_distributed=False):
         # train for one epoch
         train(args, trainer, task, epoch_itr)
 
-        # if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
-        #     valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
-        # else:
-        valid_losses = [None]
+        if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
+            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
+        else:
+            valid_losses = [None]
 
         # only use first validation loss to update the learning rate
         lr = trainer.lr_step(epoch_itr.epoch, valid_losses[0])
@@ -122,8 +122,6 @@ def train(args, trainer, task, epoch_itr):
     valid_subsets = args.valid_subset.split(',')
     max_update = args.max_update or math.inf
     for i, samples in enumerate(progress, start=epoch_itr.iterations_in_epoch):
-        if(i>100):
-            break
         log_output = trainer.train_step(samples)
         if log_output is None:
             continue
