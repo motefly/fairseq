@@ -373,7 +373,7 @@ class Trainer(object):
             ] = self._all_reduce_list[:5]
             if self.args.new_method:
                 [
-                    logging_output.get['loss1']
+                    logging_output.get['loss1'],
                     logging_output.get['loss2']
                 ] = self._all_reduce_list[5:-1]
             ooms = self._all_reduce_list[-1]
