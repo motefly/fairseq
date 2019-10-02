@@ -112,8 +112,9 @@ class MaskedLmLoss(FairseqCriterion):
         # print(loss)
 
         logging_output = {
-            'loss': utils.item(loss.data) if reduce else loss.data,
-            'nll_loss': utils.item(loss.data) if reduce else loss.data,
+            # temp set loss1 and loss2
+            'loss': utils.item(loss1.data) if reduce else loss1.data,
+            'nll_loss': utils.item(loss2.data) if reduce else loss2.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
