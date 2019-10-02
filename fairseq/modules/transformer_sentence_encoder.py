@@ -126,25 +126,25 @@ class TransformerSentenceEncoder(nn.Module):
             else None
         )
 
-        self.layers = nn.ModuleList(
-            [
-                TransformerSentenceEncoderLayer(
-                    embedding_dim=self.embedding_dim,
-                    ffn_embedding_dim=ffn_embedding_dim,
-                    num_attention_heads=num_attention_heads,
-                    dropout=self.dropout,
-                    attention_dropout=attention_dropout,
-                    activation_dropout=activation_dropout,
-                    activation_fn=activation_fn,
-                    add_bias_kv=add_bias_kv,
-                    add_zero_attn=add_zero_attn,
-                    export=export,
-                    # new added
-                    encoder_normalize_before=encoder_normalize_before,
-                )
-                for _ in range(num_encoder_layers)
-            ]
-        )
+        # self.layers = nn.ModuleList(
+        #     [
+        #         TransformerSentenceEncoderLayer(
+        #             embedding_dim=self.embedding_dim,
+        #             ffn_embedding_dim=ffn_embedding_dim,
+        #             num_attention_heads=num_attention_heads,
+        #             dropout=self.dropout,
+        #             attention_dropout=attention_dropout,
+        #             activation_dropout=activation_dropout,
+        #             activation_fn=activation_fn,
+        #             add_bias_kv=add_bias_kv,
+        #             add_zero_attn=add_zero_attn,
+        #             export=export,
+        #             # new added
+        #             encoder_normalize_before=encoder_normalize_before,
+        #         )
+        #         for _ in range(num_encoder_layers)
+        #     ]
+        # )
 
 #         if encoder_normalize_before:
 #             self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
