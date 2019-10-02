@@ -58,7 +58,7 @@ def format_stat(stat):
     elif isinstance(stat, AverageMeter):
         stat = '{:.3f}'.format(stat.val)
     elif isinstance(stat, TimeMeter):
-        stat = '{:g}'.format(round(stat.val))
+        stat = '{:g}'.format(round(stat.avg))
     elif isinstance(stat, StopwatchMeter):
         stat = '{:g}'.format(round(stat.sum))
     return stat
