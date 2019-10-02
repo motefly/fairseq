@@ -548,7 +548,7 @@ class Trainer(object):
 
     def clear_buffered_stats(self):
         if self.args.new_method:
-            self._all_reduce_list = [0.0] * 6
+            self._all_reduce_list = [0.0] * 8
         else:
             self._all_reduce_list = [0.0] * 6
 
