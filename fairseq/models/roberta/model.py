@@ -241,7 +241,7 @@ class NewRobertaLMHead(nn.Module):
             # add_zero_attn=add_zero_attn,
             self_attention=True
         )
-        self.attn_mask = torch.eye(max_positions) * -1e8
+        self.attn_mask = torch.eye(max_positions)# * -1e8
         if use_cuda:
             self.attn_mask = self.attn_mask.cuda()
         if fp16:
@@ -273,7 +273,7 @@ class NewRobertaLMHead(nn.Module):
             value=x2,
             # key_padding_mask=self_attn_padding_mask,
             need_weights=False,
-            attn_mask=attn_mask,
+            mask_eye=attn_mask,
         )
         x2 = self.activation_fn(x2)
         x2 = self.layer_norm2(x2)
