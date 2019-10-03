@@ -97,8 +97,6 @@ class RobertaModel(FairseqLanguageModel):
         return cls(args, encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
-        # import pdb
-        # pdb.set_trace()
         if classification_head_name is not None:
             features_only = True
 

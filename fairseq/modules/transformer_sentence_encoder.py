@@ -186,40 +186,62 @@ class TransformerSentenceEncoder(nn.Module):
 
         if self.embed_scale is not None:
             x *= self.embed_scale
+            if self.new_method:
+                m = self.mask_embs * self.embed_scale
 
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
+            if self.new_method:
+                m += self.embed_positions(tokens, positions=positions)
 
         if self.segment_embeddings is not None and segment_labels is not None:
             x += self.segment_embeddings(segment_labels)
+            if self.new_method:
+                m += self.segment_embeddings(segment_labels)
 
 #         if self.emb_layer_norm is not None:
 #             x = self.emb_layer_norm(x)
 
         x = F.dropout(x, p=self.dropout, training=self.training)
+        if self.new_method:
+            m = F.dropout(m, p=self.dropout, training=self.training)
 
         # account for padding while computing the representation
         if padding_mask is not None:
             x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+            if self.new_method:
+                m *= 1 - padding_mask.unsqueeze(-1).type_as(m)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
+        if self.new_method:
+            m = m.transpose(0, 1)
 
         inner_states = []
         if not last_state_only:
-            inner_states.append(x)
+            if self.new_method:
+                inner_states.append([x,m])
+            else:
+                inner_states.append(x)
 
-        # for layer in self.layers:
-        #     x, _ = layer(x, self_attn_padding_mask=padding_mask)
-        #     if not last_state_only:
-        #         inner_states.append(x)
+        for layer in self.layers:
+            x, _ = layer(x, self_attn_padding_mask=padding_mask)
+            if not last_state_only:
+                if self.new_method:
+                    inner_states.append([x,m])
+                else:
+                    inner_states.append(x)
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+        if self.new_method:
+            m = m.transpose(0, 1)
 
         sentence_rep = x[:, 0, :]
 
         if last_state_only:
             inner_states = [x]
+            if self.new_method:
+                inner_states = [[x,m]]
 
         return inner_states, sentence_rep

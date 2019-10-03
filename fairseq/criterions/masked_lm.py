@@ -55,8 +55,8 @@ class MaskedLmLoss(FairseqCriterion):
                 padding_idx = self.padding_idx
                 logits = model(**sample['net_input'], helpers=None)
                 targets = model.get_targets(sample)
-                import pdb
-                pdb.set_trace()
+                # import pdb
+                # pdb.set_trace()
 
             logits1 = logits[0][0]
             logits2 = logits[0][1]
