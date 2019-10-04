@@ -69,6 +69,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         x: torch.Tensor,
         self_attn_mask: torch.Tensor = None,
         self_attn_padding_mask: torch.Tensor = None,
+        mask_emb: torch.Tensor = None,
     ):
         """
         LayerNorm is applied either before or after the self-attention/ffn
@@ -76,7 +77,20 @@ class TransformerSentenceEncoderLayer(nn.Module):
         """
         residual = x
         # new added
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)        
+        if mask_emb is not None:
+            residual_m = mask_emb
+            mask_emb = self.maybe_layer_norm(self.self_attn_layer_norm, mask_emb, before=True)
+            mask_emb, attn_m = self.self_attn(
+                query=mask_emb,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+                new_method=True,
+            )
+
         x, attn = self.self_attn(
             query=x,
             key=x,
@@ -85,6 +99,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
+
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
         # change 
@@ -100,6 +115,24 @@ class TransformerSentenceEncoderLayer(nn.Module):
         x = residual + x
         x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
 #         x = self.final_layer_norm(x)
+
+        if mask_emb is not None:
+            mask_emb = F.dropout(mask_emb, p=self.dropout, training=self.training)
+            mask_emb = residual_m + mask_emb
+            # change 
+            mask_emb = self.maybe_layer_norm(self.self_attn_layer_norm, mask_emb, after=True)
+            # x = self.self_attn_layer_norm(x)
+
+            residual_m = mask_emb
+            mask_emb = self.maybe_layer_norm(self.final_layer_norm, mask_emb, before=True)
+            mask_emb = self.activation_fn(self.fc1(mask_emb))
+            mask_emb = F.dropout(mask_emb, p=self.activation_dropout, training=self.training)
+            mask_emb = self.fc2(mask_emb)
+            mask_emb = F.dropout(mask_emb, p=self.dropout, training=self.training)
+            mask_emb = residual_m + mask_emb
+            mask_emb = self.maybe_layer_norm(self.final_layer_norm, mask_emb, after=True)
+#         x = self.final_layer_norm(x)
+            return ((x, attn), (mask_emb, attn_m))
         return x, attn
     
     def maybe_layer_norm(self, layer_norm, x, before=False, after=False):

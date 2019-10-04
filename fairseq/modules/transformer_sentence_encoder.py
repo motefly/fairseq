@@ -69,6 +69,7 @@ class TransformerSentenceEncoder(nn.Module):
     def __init__(
         self,
         padding_idx: int,
+        mask_idx: int,
         vocab_size: int,
         num_encoder_layers: int = 6,
         embedding_dim: int = 768,
@@ -91,10 +92,12 @@ class TransformerSentenceEncoder(nn.Module):
         freeze_embeddings: bool = False,
         n_trans_layers_to_freeze: int = 0,
         export: bool = False,
+        new_method: bool = False,
     ) -> None:
 
         super().__init__()
         self.padding_idx = padding_idx
+        self.mask_idx = mask_idx
         self.vocab_size = vocab_size
         self.dropout = dropout
         self.max_seq_len = max_seq_len
@@ -103,6 +106,7 @@ class TransformerSentenceEncoder(nn.Module):
         self.use_position_embeddings = use_position_embeddings
         self.apply_bert_init = apply_bert_init
         self.learned_pos_embedding = learned_pos_embedding
+        self.new_method = new_method
 
         self.embed_tokens = nn.Embedding(
             self.vocab_size, self.embedding_dim, self.padding_idx
@@ -183,11 +187,13 @@ class TransformerSentenceEncoder(nn.Module):
             padding_mask = None
 
         x = self.embed_tokens(tokens)
+        if self.new_method:
+            m = self.embed_tokens(torch.ones_like(tokens) * self.mask_idx)
 
         if self.embed_scale is not None:
             x *= self.embed_scale
             if self.new_method:
-                m = self.mask_embs * self.embed_scale
+                m = m * self.embed_scale
 
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
@@ -225,7 +231,10 @@ class TransformerSentenceEncoder(nn.Module):
                 inner_states.append(x)
 
         for layer in self.layers:
-            x, _ = layer(x, self_attn_padding_mask=padding_mask)
+            if self.new_method:
+                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m)
+            else:
+                x, _ = layer(x, self_attn_padding_mask=padding_mask)
             if not last_state_only:
                 if self.new_method:
                     inner_states.append([x,m])

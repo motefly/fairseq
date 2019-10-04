@@ -93,7 +93,7 @@ class RobertaModel(FairseqLanguageModel):
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
 
-        encoder = RobertaEncoder(args, task.source_dictionary)
+        encoder = RobertaEncoder(args, task.source_dictionary, task.mask_idx)
         return cls(args, encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
@@ -239,11 +239,11 @@ class NewRobertaLMHead(nn.Module):
             # add_zero_attn=add_zero_attn,
             self_attention=True
         )
-        self.attn_mask = torch.eye(max_positions)# * -1e8
-        if use_cuda:
-            self.attn_mask = self.attn_mask.cuda()
-        if fp16:
-            self.attn_mask = self.attn_mask.half()
+        # self.attn_mask = torch.eye(max_positions)# * -1e8
+        # if use_cuda:
+        #     self.attn_mask = self.attn_mask.cuda()
+        # if fp16:
+        #     self.attn_mask = self.attn_mask.half()
         
         if weight is None:
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
@@ -258,20 +258,22 @@ class NewRobertaLMHead(nn.Module):
         )
         self.bias_emb2.weight.data.fill_(0)
 
-    def forward(self, x, target_samples, **kwargs):
-        x1 = self.dense1(x)
+    def forward(self, features, target_samples, **kwargs):
+        x, m = features
+        x1 = self.dense1(m)
         x1 = self.activation_fn(x1)
         x1 = self.layer_norm1(x1)
         
         x2 = x.transpose(0,1)
-        attn_mask = self.attn_mask[:x2.size(0), :x2.size(0)]
+        m2 = m.transpose(0,1)
+        # attn_mask = self.attn_mask[:x2.size(0), :x2.size(0)]
         x2, attn = self.self_attn(
-            query=x2,
+            query=m2,
             key=x2,
             value=x2,
             # key_padding_mask=self_attn_padding_mask,
             need_weights=False,
-            mask_eye=attn_mask,
+            new_method=True,
         )
         x2 = self.activation_fn(x2)
         x2 = self.layer_norm2(x2)
@@ -482,13 +484,14 @@ class RobertaEncoder(FairseqDecoder):
     by :class:`~fairseq.models.FairseqLanguageModel`.
     """
 
-    def __init__(self, args, dictionary):
+    def __init__(self, args, dictionary, mask_idx):
         super().__init__(dictionary)
         args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
         self.args = args
         self.new_method = args.new_method
         self.sentence_encoder = TransformerSentenceEncoder(
             padding_idx=dictionary.pad(),
+            mask_idx=mask_idx,
             vocab_size=len(dictionary),
             num_encoder_layers=args.encoder_layers,
             embedding_dim=args.encoder_embed_dim,
@@ -503,6 +506,7 @@ class RobertaEncoder(FairseqDecoder):
             encoder_normalize_before=args.encoder_normalize_before,
             apply_bert_init=True,
             activation_fn=args.activation_fn,
+            new_method=args.new_method,
         )
         if not self.new_method:
             self.lm_head = RobertaLMHead(

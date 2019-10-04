@@ -92,7 +92,7 @@ class MultiheadAttention(nn.Module):
 
     def forward(self, query, key, value, key_padding_mask=None, incremental_state=None,
                 need_weights=True, static_kv=False, attn_mask=None, before_softmax=False,
-                mask_eye=None):
+                new_method=False):
         """Input shape: Time x Batch x Channel
 
         Timesteps can be masked by supplying a T x T mask in the
@@ -104,7 +104,7 @@ class MultiheadAttention(nn.Module):
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
-        if self.enable_torch_version and not self.onnx_trace and incremental_state is None and not static_kv and mask_eye is not None:
+        if self.enable_torch_version and not self.onnx_trace and incremental_state is None and not static_kv and not new_method:
             if self.qkv_same_dim:
                 return F.multi_head_attention_forward(query, key, value,
                                                       self.embed_dim, self.num_heads,
@@ -214,7 +214,8 @@ class MultiheadAttention(nn.Module):
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
-        if mask_eye is not None:
+        if new_method:
+            mask_eye = torch.eye(attn_weights.size(-1)).to(attn_weights.device).to(attn_weights.dtype)
             attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q, q.transpose(1,2)) * mask_eye
         
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
@@ -252,9 +253,9 @@ class MultiheadAttention(nn.Module):
         attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
 
         attn = torch.bmm(attn_weights, v)
-        if mask_eye is not None:
-            eye_weights = torch.sum(mask_eye * attn_weights, dim=-1)
-            attn = attn + torch.bmm(eye_weights, q-v)
+        if new_method:
+            eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
+            attn = attn + eye_weights*(q-v)
 
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if (self.onnx_trace and attn.size(1) == 1):
