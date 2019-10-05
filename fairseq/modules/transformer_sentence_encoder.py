@@ -211,6 +211,7 @@ class TransformerSentenceEncoder(nn.Module):
         x = F.dropout(x, p=self.dropout, training=self.training)
         if self.new_method:
             m = F.dropout(m, p=self.dropout, training=self.training)
+            mask_eye = torch.eye(m.size(1)).to(m.device).to(m.dtype)
 
         # account for padding while computing the representation
         if padding_mask is not None:
@@ -234,7 +235,7 @@ class TransformerSentenceEncoder(nn.Module):
 
         for layer in self.layers:
             if self.new_method:
-                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m)
+                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m, mask_eye=mask_eye)
             else:
                 x, _ = layer(x, self_attn_padding_mask=padding_mask)
             if not last_state_only:

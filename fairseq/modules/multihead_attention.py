@@ -92,7 +92,7 @@ class MultiheadAttention(nn.Module):
 
     def forward(self, query, key, value, key_padding_mask=None, incremental_state=None,
                 need_weights=True, static_kv=False, attn_mask=None, before_softmax=False,
-                new_method=False):
+                new_method=False, mask_eye=None):
         """Input shape: Time x Batch x Channel
 
         Timesteps can be masked by supplying a T x T mask in the
@@ -220,7 +220,6 @@ class MultiheadAttention(nn.Module):
             k_e, k_m = k[:d1_sz,:,:], k[d1_sz:,:,:]
             v_e, v_m = v[:d1_sz,:,:], v[d1_sz:,:,:]
             attn_weights = torch.bmm(q_m, k_e.transpose(1, 2))
-            mask_eye = torch.eye(attn_weights.size(-1)).to(attn_weights.device).to(attn_weights.dtype)
             attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q_m, k_m.transpose(1,2)) * mask_eye
         else:
             attn_weights = torch.bmm(q, k.transpose(1, 2))
