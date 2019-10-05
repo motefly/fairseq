@@ -220,7 +220,7 @@ class MultiheadAttention(nn.Module):
             k_e, k_m = k[:d1_sz,:,:], k[d1_sz:,:,:]
             v_e, v_m = v[:d1_sz,:,:], v[d1_sz:,:,:]
             attn_weights = torch.bmm(q_m, k_e.transpose(1, 2))
-            attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q_m, k_m.transpose(1,2)) * mask_eye
+            # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q_m, k_m.transpose(1,2)) * mask_eye
         else:
             attn_weights = torch.bmm(q, k.transpose(1, 2))
         
@@ -261,8 +261,8 @@ class MultiheadAttention(nn.Module):
 
         if new_method:
             attn = torch.bmm(attn_weights, v_e)
-            eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
-            attn = attn + eye_weights*(v_m - v_e)
+            # eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
+            # attn = attn + eye_weights*(v_m - v_e)
         else:
             attn = torch.bmm(attn_weights, v)
         
