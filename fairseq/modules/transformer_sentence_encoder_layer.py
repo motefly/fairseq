@@ -82,20 +82,16 @@ class TransformerSentenceEncoderLayer(nn.Module):
         if mask_emb is not None:
             residual_m = mask_emb
             mask_emb = self.maybe_layer_norm(self.self_attn_layer_norm, mask_emb, before=True)
-            cat_emb = torch.cat([x,mask_emb], axis=1)
-            if self_attn_padding_mask is not None:
-                tmp_padding_mask = self_attn_padding_mask.repeat(2,1)
-            else:
-                tmp_padding_mask = None
             mask_emb, attn_m = self.self_attn(
-                query=cat_emb,
-                key=cat_emb,
-                value=cat_emb,
-                key_padding_mask=tmp_padding_mask,
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
                 need_weights=False,
-                attn_mask=None, #not support
+                attn_mask=self_attn_mask,
                 new_method=True,
                 mask_eye=mask_eye,
+                mask_emb=mask_emb,
             )
 
         x, attn = self.self_attn(
