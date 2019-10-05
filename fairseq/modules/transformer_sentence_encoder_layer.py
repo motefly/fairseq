@@ -82,7 +82,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         if mask_emb is not None:
             residual_m = mask_emb
             mask_emb = self.maybe_layer_norm(self.self_attn_layer_norm, mask_emb, before=True)
-            mask_emb, attn_m = self.self_attn(
+            (x, attn), (mask_emb, attn_m) = self.self_attn(
                 query=x,
                 key=x,
                 value=x,
@@ -93,15 +93,15 @@ class TransformerSentenceEncoderLayer(nn.Module):
                 mask_eye=mask_eye,
                 mask_emb=mask_emb,
             )
-
-        x, attn = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
-            key_padding_mask=self_attn_padding_mask,
-            need_weights=False,
-            attn_mask=self_attn_mask,
-        )
+        else:
+            x, attn = self.self_attn(
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+            )
 
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x

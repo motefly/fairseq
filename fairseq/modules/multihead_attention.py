@@ -168,14 +168,17 @@ class MultiheadAttention(nn.Module):
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
         return q, k, v
 
-    def new_method_forward(self, emb_qkv, mask_qkv, key_padding_mask=None, incremental_state=None,
+    def new_method_forward(self, emb_qkv, mask_qkv=None, key_padding_mask=None, incremental_state=None,
                 need_weights=True, static_kv=False, attn_mask=None,
                 mask_eye=None, tgt_len=None, bsz=None, embed_dim=None):
         qe, ke, ve = emb_qkv
-        qm, km, vm = mask_qkv
         src_len = ke.size(1)
-        attn_weights = torch.bmm(qm, ke.transpose(1, 2))
-        # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
+        if mask_qkv is not None:
+            qm, km, vm = mask_qkv
+            attn_weights = torch.bmm(qm, ke.transpose(1, 2))
+            # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
+        else:
+            attn_weights = torch.bmm(qe, ke.transpose(1, 2))
 
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
@@ -208,10 +211,13 @@ class MultiheadAttention(nn.Module):
         ).type_as(attn_weights)
         attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
 
-        attn = torch.bmm(attn_weights, ve)
-        # eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
-        # attn = attn + eye_weights*(vm - ve)
-        
+        if mask_qkv is not None:
+            attn = torch.bmm(attn_weights, ve)
+            # eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
+            # attn = attn + eye_weights*(vm - ve)
+        else:
+            attn = torch.bmm(attn_weights, ve)
+
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
             
         if (self.onnx_trace and attn.size(1) == 1):
@@ -245,9 +251,13 @@ class MultiheadAttention(nn.Module):
         if new_method:
             emb_qkv = self.new_method_helper(query, key_padding_mask, incremental_state, static_kv)
             mask_qkv = self.new_method_helper(mask_emb, key_padding_mask, incremental_state, static_kv)
-            return self.new_method_forward(emb_qkv, mask_qkv, key_padding_mask, incremental_state,
-                                    need_weights, static_kv, attn_mask, mask_eye,
-                                    tgt_len, bsz, embed_dim)
+            emb, attn_emb = self.new_method_forward(emb_qkv, key_padding_mask=key_padding_mask, incremental_state=incremental_state,
+                            need_weights=need_weights, static_kv=static_kv, attn_mask=attn_mask,
+                            tgt_len=tgt_len, bsz=bsz, embed_dim=embed_dim)
+            mask_emb, attn_mask = self.new_method_forward(emb_qkv, mask_qkv=mask_qkv, key_padding_mask=key_padding_mask, incremental_state=incremental_state,
+                            need_weights=need_weights, static_kv=static_kv, attn_mask=attn_mask, mask_eye=mask_eye,
+                            tgt_len=tgt_len, bsz=bsz, embed_dim=embed_dim)
+            return ((emb, attn_emb), (mask_emb, attn_mask))
             
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
