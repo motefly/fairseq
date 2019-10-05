@@ -95,6 +95,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
                 need_weights=False,
                 attn_mask=None, #not support
                 new_method=True,
+                mask_eye=mask_eye,
             )
 
         x, attn = self.self_attn(
