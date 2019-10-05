@@ -214,11 +214,11 @@ class MultiheadAttention(nn.Module):
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
         if new_method:
-            d1_sz = int(k.size(0)/2)
+            # d1_sz = int(k.size(0)/2)
             bsz = int(bsz / 2)
-            q_e, q_m = q[:d1_sz,:,:], q[d1_sz:,:,:]
-            k_e, k_m = k[:d1_sz,:,:], k[d1_sz:,:,:]
-            v_e, v_m = v[:d1_sz,:,:], v[d1_sz:,:,:]
+            q_e, q_m = q.chunk(2,dim=0)# [:d1_sz,:,:], q[d1_sz:,:,:]
+            k_e, k_m = k.chunk(2,dim=0)# [:d1_sz,:,:], k[d1_sz:,:,:]
+            v_e, v_m = v.chunk(2,dim=0)# [:d1_sz,:,:], v[d1_sz:,:,:]
             attn_weights = torch.bmm(q_m, k_e.transpose(1, 2))
             # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q_m, k_m.transpose(1,2)) * mask_eye
         else:
