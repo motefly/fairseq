@@ -239,7 +239,7 @@ class MultiheadAttention(nn.Module):
 
     def forward(self, query, key, value, key_padding_mask=None, incremental_state=None,
                 need_weights=True, static_kv=False, attn_mask=None, before_softmax=False,
-                new_method=False, mask_eye=None, mask_emb=None):
+                new_method=False, mask_eye=None, mask_emb=None, needs_x=False):
         """Input shape: Time x Batch x Channel
 
         Timesteps can be masked by supplying a T x T mask in the
@@ -251,9 +251,12 @@ class MultiheadAttention(nn.Module):
         if new_method:
             emb_qkv = self.new_method_helper(query, key_padding_mask, incremental_state, static_kv)
             mask_qkv = self.new_method_helper(mask_emb, key_padding_mask, incremental_state, static_kv)
-            emb, attn_emb = self.new_method_forward(emb_qkv, key_padding_mask=key_padding_mask, incremental_state=incremental_state,
+            if needs_x:
+                emb, attn_emb = self.new_method_forward(emb_qkv, key_padding_mask=key_padding_mask, incremental_state=incremental_state,
                             need_weights=need_weights, static_kv=static_kv, attn_mask=attn_mask,
                             tgt_len=tgt_len, bsz=bsz, embed_dim=embed_dim)
+            else:
+                emb, attn_emb = None, None
             mask_emb, attn_mask = self.new_method_forward(emb_qkv, mask_qkv=mask_qkv, key_padding_mask=key_padding_mask, incremental_state=incremental_state,
                             need_weights=need_weights, static_kv=static_kv, attn_mask=attn_mask, mask_eye=mask_eye,
                             tgt_len=tgt_len, bsz=bsz, embed_dim=embed_dim)

@@ -233,9 +233,9 @@ class TransformerSentenceEncoder(nn.Module):
             else:
                 inner_states.append(x)
 
-        for layer in self.layers:
+        for idx,layer in enumerate(self.layers):
             if self.new_method:
-                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m, mask_eye=mask_eye)
+                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m, mask_eye=mask_eye, needs_x=(idx==len(self.layers)-1))
             else:
                 x, _ = layer(x, self_attn_padding_mask=padding_mask)
             if not last_state_only:
@@ -247,11 +247,12 @@ class TransformerSentenceEncoder(nn.Module):
         # pdb.set_trace()
 
         # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
         if self.new_method:
             m = m.transpose(0, 1)
-
-        sentence_rep = x[:, 0, :]
+            sentence_rep = m[:, 0, :]
+        else:
+            x = x.transpose(0, 1)
+            sentence_rep = x[:, 0, :]
 
         if last_state_only:
             inner_states = [x]
