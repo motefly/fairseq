@@ -235,7 +235,7 @@ class TransformerSentenceEncoder(nn.Module):
 
         for idx,layer in enumerate(self.layers):
             if self.new_method:
-                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m, mask_eye=mask_eye, needs_x=(idx==len(self.layers)-1))
+                (x, _), (m, _) = layer(x, self_attn_padding_mask=padding_mask, mask_emb=m, mask_eye=mask_eye, needs_x=(idx!=len(self.layers)-1))
             else:
                 x, _ = layer(x, self_attn_padding_mask=padding_mask)
             if not last_state_only:
