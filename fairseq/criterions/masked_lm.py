@@ -33,7 +33,7 @@ class MaskedLmLoss(FairseqCriterion):
         3) logging outputs to display while training
         """    
         if self.new_method:
-            if model.training:
+            if False: #model.training:
                 items = model.get_targets(sample).view(-1).cpu().numpy()
 
                 vocab_num = self.vocab_num

@@ -176,7 +176,7 @@ class MultiheadAttention(nn.Module):
         if mask_qkv is not None:
             qm, km, vm = mask_qkv
             attn_weights = torch.bmm(qm, ke.transpose(1, 2))
-            # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
+            attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
         else:
             attn_weights = torch.bmm(qe, ke.transpose(1, 2))
 
@@ -213,8 +213,8 @@ class MultiheadAttention(nn.Module):
 
         if mask_qkv is not None:
             attn = torch.bmm(attn_weights, ve)
-            # eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
-            # attn = attn + eye_weights*(vm - ve)
+            eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
+            attn = attn + eye_weights*(vm - ve)
         else:
             attn = torch.bmm(attn_weights, ve)
 
