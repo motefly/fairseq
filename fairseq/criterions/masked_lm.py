@@ -58,9 +58,11 @@ class MaskedLmLoss(FairseqCriterion):
                 # import pdb
                 # pdb.set_trace()
 
-            logits1 = logits[0][0]
-            logits2 = logits[0][1]
+            logits1 = logits[0]#[0]
+            # logits2 = logits[0][1]
             
+            # import pdb
+            # pdb.set_trace()
             loss1 = F.nll_loss(
                 F.log_softmax(
                     logits1.view(-1, logits1.size(-1)),
@@ -71,18 +73,20 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=padding_idx,
                 )
-            # loss = loss1       
-            loss2 = F.nll_loss(
-                F.log_softmax(
-                    logits2.view(-1, logits2.size(-1)),
-                    dim=-1,
-                    dtype=torch.float32,
-                ),
-                targets.view(-1),
-                reduction='sum',
-                ignore_index=padding_idx,
-            )
-            loss = self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2
+            # # loss = loss1       
+            # loss2 = F.nll_loss(
+            #     F.log_softmax(
+            #         logits2.view(-1, logits2.size(-1)),
+            #         dim=-1,
+            #         dtype=torch.float32,
+            #     ),
+            #     targets.view(-1),
+            #     reduction='sum',
+            #     ignore_index=padding_idx,
+            # )
+            # loss = self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2
+            loss = loss1
+            loss2 = torch.tensor(0.0)
             sample_size = targets.view(-1).size(0)
 
         else:

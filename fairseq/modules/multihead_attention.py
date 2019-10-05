@@ -213,10 +213,17 @@ class MultiheadAttention(nn.Module):
                 key_padding_mask = torch.cat(
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
-        attn_weights = torch.bmm(q, k.transpose(1, 2))
         if new_method:
+            d1_sz = int(k.size(0)/2)
+            bsz = int(bsz / 2)
+            q_e, q_m = q[:d1_sz,:,:], q[d1_sz:,:,:]
+            k_e, k_m = k[:d1_sz,:,:], k[d1_sz:,:,:]
+            v_e, v_m = v[:d1_sz,:,:], v[d1_sz:,:,:]
+            attn_weights = torch.bmm(q_m, k_e.transpose(1, 2))
             mask_eye = torch.eye(attn_weights.size(-1)).to(attn_weights.device).to(attn_weights.dtype)
-            attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q, q.transpose(1,2)) * mask_eye
+            attn_weights = attn_weights * (1-mask_eye) + torch.bmm(q_m, k_m.transpose(1,2)) * mask_eye
+        else:
+            attn_weights = torch.bmm(q, k.transpose(1, 2))
         
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
@@ -229,6 +236,7 @@ class MultiheadAttention(nn.Module):
             attn_weights += attn_mask
 
         if key_padding_mask is not None:
+            key_padding_mask = key_padding_mask[:bsz,:]
             # don't attend to padding symbols
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             if self.onnx_trace:
@@ -252,12 +260,15 @@ class MultiheadAttention(nn.Module):
         ).type_as(attn_weights)
         attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
 
-        attn = torch.bmm(attn_weights, v)
         if new_method:
+            attn = torch.bmm(attn_weights, v_e)
             eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
-            attn = attn + eye_weights*(q-v)
-
+            attn = attn + eye_weights*(v_m - v_e)
+        else:
+            attn = torch.bmm(attn_weights, v)
+        
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
+            
         if (self.onnx_trace and attn.size(1) == 1):
             # when ONNX tracing a single decoder step (sequence length == 1)
             # the transpose is a no-op copy before view, thus unnecessary

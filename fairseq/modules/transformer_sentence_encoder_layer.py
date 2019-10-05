@@ -77,17 +77,22 @@ class TransformerSentenceEncoderLayer(nn.Module):
         """
         residual = x
         # new added
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)        
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)  
         if mask_emb is not None:
             residual_m = mask_emb
             mask_emb = self.maybe_layer_norm(self.self_attn_layer_norm, mask_emb, before=True)
+            cat_emb = torch.cat([x,mask_emb], axis=1)
+            if self_attn_padding_mask is not None:
+                tmp_padding_mask = self_attn_padding_mask.repeat(2,1)
+            else:
+                tmp_padding_mask = None
             mask_emb, attn_m = self.self_attn(
-                query=mask_emb,
-                key=x,
-                value=x,
-                key_padding_mask=self_attn_padding_mask,
+                query=cat_emb,
+                key=cat_emb,
+                value=cat_emb,
+                key_padding_mask=tmp_padding_mask,
                 need_weights=False,
-                attn_mask=self_attn_mask,
+                attn_mask=None, #not support
                 new_method=True,
             )
 

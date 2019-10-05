@@ -225,20 +225,20 @@ class NewRobertaLMHead(nn.Module):
     def __init__(self, embed_dim, output_dim, num_attention_heads, activation_fn, fp16=False, max_positions=512, weight=None, padding_idx=1, vocab_size=1):
         super().__init__()
         self.dense1 = nn.Linear(embed_dim, embed_dim)
-        self.dense2 = nn.Linear(embed_dim, embed_dim)
+        # self.dense2 = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
         self.layer_norm1 = LayerNorm(embed_dim)
-        self.layer_norm2 = LayerNorm(embed_dim)
+        # self.layer_norm2 = LayerNorm(embed_dim)
         #self.output_dim = output_dim
 
-        self.self_attn = MultiheadAttention(
-            embed_dim,
-            num_heads = num_attention_heads,
-            # dropout=attention_dropout,
-            # add_bias_kv=add_bias_kv,
-            # add_zero_attn=add_zero_attn,
-            self_attention=True
-        )
+        # self.self_attn = MultiheadAttention(
+        #     embed_dim,
+        #     num_heads = num_attention_heads,
+        #     # dropout=attention_dropout,
+        #     # add_bias_kv=add_bias_kv,
+        #     # add_zero_attn=add_zero_attn,
+        #     self_attention=True
+        # )
         # self.attn_mask = torch.eye(max_positions)# * -1e8
         # if use_cuda:
         #     self.attn_mask = self.attn_mask.cuda()
@@ -253,10 +253,10 @@ class NewRobertaLMHead(nn.Module):
             vocab_size, 1, padding_idx
         )
         self.bias_emb1.weight.data.fill_(0)
-        self.bias_emb2 = nn.Embedding(
-            vocab_size, 1, padding_idx
-        )
-        self.bias_emb2.weight.data.fill_(0)
+        # self.bias_emb2 = nn.Embedding(
+        #     vocab_size, 1, padding_idx
+        # )
+        # self.bias_emb2.weight.data.fill_(0)
 
     def forward(self, features, target_samples, **kwargs):
         x, m = features
@@ -264,37 +264,37 @@ class NewRobertaLMHead(nn.Module):
         x1 = self.activation_fn(x1)
         x1 = self.layer_norm1(x1)
         
-        x2 = x.transpose(0,1)
-        m2 = m.transpose(0,1)
-        # attn_mask = self.attn_mask[:x2.size(0), :x2.size(0)]
-        x2, attn = self.self_attn(
-            query=m2,
-            key=x2,
-            value=x2,
-            # key_padding_mask=self_attn_padding_mask,
-            need_weights=False,
-            new_method=True,
-        )
-        x2 = self.activation_fn(x2)
-        x2 = self.layer_norm2(x2)
+        # x2 = x.transpose(0,1)
+        # m2 = m.transpose(0,1)
+        # # attn_mask = self.attn_mask[:x2.size(0), :x2.size(0)]
+        # x2, attn = self.self_attn(
+        #     query=m2,
+        #     key=x2,
+        #     value=x2,
+        #     # key_padding_mask=self_attn_padding_mask,
+        #     need_weights=False,
+        #     new_method=True,
+        # )
+        # x2 = self.activation_fn(x2)
+        # x2 = self.layer_norm2(x2)
 
-        x2 = x2.transpose(0,1)
-        x2 = self.dense2(x2)
-        x2 = self.activation_fn(x2)
-        x2 = self.layer_norm2(x2)
+        # x2 = x2.transpose(0,1)
+        # x2 = self.dense2(x2)
+        # x2 = self.activation_fn(x2)
+        # x2 = self.layer_norm2(x2)
 
         if target_samples is not None:
             weight = self.weight_emb(target_samples)
             bias1 = self.bias_emb1(target_samples).view(-1)
-            bias2 = self.bias_emb2(target_samples).view(-1)
+            # bias2 = self.bias_emb2(target_samples).view(-1)
         else:
             weight = self.weight_emb.weight
             bias1 = self.bias_emb1.weight.view(-1)
-            bias2 = self.bias_emb2.weight.view(-1)
+            # bias2 = self.bias_emb2.weight.view(-1)
 
         x1 = F.linear(x1, weight) + bias1
-        x2 = F.linear(x2, weight) + bias2
-        return x1, x2
+        # x2 = F.linear(x2, weight) + bias2
+        return x1#, x2
 
 
 # class RobertaLMHead4(nn.Module):
