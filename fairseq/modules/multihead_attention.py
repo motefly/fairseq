@@ -175,7 +175,7 @@ class MultiheadAttention(nn.Module):
         qm, km, vm = mask_qkv
         src_len = ke.size(1)
         attn_weights = torch.bmm(qm, ke.transpose(1, 2))
-        attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
+        # attn_weights = attn_weights * (1-mask_eye) + torch.bmm(qm, km.transpose(1,2)) * mask_eye
 
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
@@ -209,8 +209,8 @@ class MultiheadAttention(nn.Module):
         attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
 
         attn = torch.bmm(attn_weights, ve)
-        eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
-        attn = attn + eye_weights*(vm - ve)
+        # eye_weights = torch.sum(mask_eye * attn_weights, dim=-1, keepdim=True)
+        # attn = attn + eye_weights*(vm - ve)
         
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
             
