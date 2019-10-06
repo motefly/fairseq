@@ -53,11 +53,19 @@ class MaskedLmLoss(FairseqCriterion):
                 
             else:
                 padding_idx = self.padding_idx
-                logits = model(**sample['net_input'], helpers=None)
+                masked_tokens = sample['target'].ne(padding_idx)
+                sample_size = masked_tokens.int().sum().item()
+                if sample_size == 0:
+                    masked_tokens = None
+
+                logits = model(**sample['net_input'], helpers=None, masked_tokens=masked_tokens)
                 targets = model.get_targets(sample)
+                if sample_size != 0:
+                    targets = targets[masked_tokens]
                 # import pdb
                 # pdb.set_trace()
 
+            # sample_size = targets.view(-1).size(0)
             logits1 = logits[0]#[0]
             # logits2 = logits[0][1]
             
@@ -87,7 +95,6 @@ class MaskedLmLoss(FairseqCriterion):
             # loss = self.loss_lamda * loss1 + (1-self.loss_lamda) * loss2
             loss = loss1
             loss2 = torch.tensor(0.0)
-            sample_size = targets.view(-1).size(0)
 
         else:
             # compute MLM loss

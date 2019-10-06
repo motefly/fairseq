@@ -258,8 +258,10 @@ class NewRobertaLMHead(nn.Module):
         # )
         # self.bias_emb2.weight.data.fill_(0)
 
-    def forward(self, features, target_samples, **kwargs):
+    def forward(self, features, target_samples, masked_tokens, **kwargs):
         x, m = features
+        if masked_tokens is not None:
+            m = m[masked_tokens, :]
         x1 = self.dense1(m)
         x1 = self.activation_fn(x1)
         x1 = self.layer_norm1(x1)
@@ -536,7 +538,7 @@ class RobertaEncoder(FairseqDecoder):
                 vocab_size=len(dictionary),
             )
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, helpers=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, helpers=None, masked_tokens=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -554,7 +556,7 @@ class RobertaEncoder(FairseqDecoder):
         """
         x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
-            x = self.output_layer(x, helpers=helpers)
+            x = self.output_layer(x, helpers=helpers, masked_tokens=masked_tokens)
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -565,8 +567,8 @@ class RobertaEncoder(FairseqDecoder):
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
-    def output_layer(self, features, helpers=None, **unused):
-        return self.lm_head(features, helpers)
+    def output_layer(self, features, helpers=None, masked_tokens=None, **unused):
+        return self.lm_head(features, helpers, masked_tokens)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
