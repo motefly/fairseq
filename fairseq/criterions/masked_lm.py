@@ -88,9 +88,9 @@ class MaskedLmLoss(FairseqCriterion):
                 ignore_index=padding_idx,
                 )
 
-            y = targets.view(-1)
-            pred = logits1.view(-1, logits1.size(-1)).argmax(dim=-1)
-            print(torch.eq(pred, y).sum().float().item()/pred.size(0))
+            # y = targets.view(-1)
+            # pred = logits1.view(-1, logits1.size(-1)).argmax(dim=-1)
+            # print(torch.eq(pred, y).sum().float().item()/pred.size(0))
             # # loss = loss1       
             # loss2 = F.nll_loss(
             #     F.log_softmax(

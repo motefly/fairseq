@@ -129,7 +129,7 @@ class TransformerSentenceEncoder(nn.Module):
             if self.use_position_embeddings
             else None
         )
-
+        num_encoder_layers = 1
         self.layers = nn.ModuleList(
             [
                 TransformerSentenceEncoderLayer(
