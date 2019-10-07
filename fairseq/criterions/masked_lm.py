@@ -52,8 +52,14 @@ class MaskedLmLoss(FairseqCriterion):
                 targets = torch.from_numpy(items).cuda().long()
                 
             else:
+                # import pdb
+                # pdb.set_trace()
+                # rand_mask = torch.randint_like(sample['target'], 0, 100).bool()
+                # tmp = torch.randint_like(sample['target'], 2, 50000)*(1-rand_mask.long()) + sample['target']*(rand_mask.long())
+                # sample['net_input']['src_tokens'] = tmp
+                # sample['target'] = tmp
                 padding_idx = self.padding_idx
-                masked_tokens = sample['target'].ne(padding_idx)
+                masked_tokens = sample['target'].ne(padding_idx) #.long() * (1-rand_mask.long())).bool()
                 sample_size = masked_tokens.int().sum().item()
                 if sample_size == 0:
                     masked_tokens = None
@@ -81,6 +87,10 @@ class MaskedLmLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=padding_idx,
                 )
+
+            y = targets.view(-1)
+            pred = logits1.view(-1, logits1.size(-1)).argmax(dim=-1)
+            print(torch.eq(pred, y).sum().float().item()/pred.size(0))
             # # loss = loss1       
             # loss2 = F.nll_loss(
             #     F.log_softmax(
