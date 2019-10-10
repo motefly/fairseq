@@ -23,10 +23,10 @@ from fairseq.modules import (
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
-from .hub_interface import GeneratorHubInterface
+from .hub_interface import ElectraHubInterface
 
 
-@register_model('Electra')
+@register_model('electra')
 class Electra(FairseqLanguageModel):
 
     @classmethod
@@ -95,37 +95,35 @@ class Electra(FairseqLanguageModel):
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
 
-        gen_encoder = GeneratorEncoder(args, task.source_dictionary)
         disc_encoder = DiscEncoder(args, task.source_dictionary)
+        gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens)
         return cls(args, gen_encoder, disc_encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, **kwargs):
         if classification_head_name is not None:
             features_only = True
 
-        if self.args.debug:
-            import pdb
-            pdb.set_trace()
-
-        # when sharing the token embeddings between the generator and discriminator, use the embdding of discriminator
-        shared_embedding = self.discriminator.embed_tokens(src_tokens)
-
         # x-shape: (batch, src_len, vocab)
-        x, _ = self.generator(src_tokens, features_only, return_all_hiddens, shared_embedding=shared_embedding, **kwargs)
-        sample_probs = torch.softmax(x, -1).view(-1, x.size(-1))
+        gen_x, _ = self.generator(src_tokens, features_only, return_all_hiddens, masked_tokens, **kwargs)
+        sample_probs = torch.softmax(gen_x, -1).view(-1, gen_x.size(-1))
         # sampled_tokens-shape: (batch*src_len, 1)
-        sampled_tokens = torch.multinomial(sample_probs, 1)
+        sampled_tokens = torch.multinomial(sample_probs, 1).view(-1)
+        # if self.args.debug:
+        #     import pdb
+        #     pdb.set_trace()
 
         if masked_tokens is not None:
-            src_tokens = src_tokens * (1-masked_tokens) + sampled_tokens * masked_tokens
+            src_tokens[masked_tokens] = sampled_tokens
         else:
-            src_tokens = sampled_tokens
+            src_tokens = sampled_tokens.view(src_tokens.size())
+        # to-fix: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation:
+        
         # for discriminator, predict all of the tokens
-        x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens = None, **kwargs)
+        disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, **kwargs)
 
         if classification_head_name is not None:
-            x = self.classification_heads[classification_head_name](x)
-        return x, extra
+            disc_x = self.classification_heads[classification_head_name](disc_x)
+        return gen_x, disc_x, src_tokens, extra
 
     def register_classification_head(self, name, num_classes=None, inner_dim=None, **kwargs):
         """Register a classification head."""
@@ -163,7 +161,7 @@ class Electra(FairseqLanguageModel):
             load_checkpoint_heads=True,
             **kwargs,
         )
-        return GeneratorHubInterface(x['args'], x['task'], x['models'][0])
+        return ElectraHubInterface(x['args'], x['task'], x['models'][0])
 
     def upgrade_state_dict_named(self, state_dict, name):
         prefix = name + '.' if name != '' else ''
@@ -215,7 +213,7 @@ class Electra(FairseqLanguageModel):
 class GeneratorLMHead(nn.Module):
     """Head for masked language modeling."""
 
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
+    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, share_emb_pro=None):
         super().__init__()
         self.dense = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
@@ -223,6 +221,11 @@ class GeneratorLMHead(nn.Module):
 
         if weight is None:
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
+        elif share_emb_pro is not None:
+            self.add_one_linear = True
+            self.share_emb_pro = share_emb_pro
+        else:
+            self.add_one_linear = False
         self.weight = weight
         self.bias = nn.Parameter(torch.zeros(output_dim))
 
@@ -235,8 +238,13 @@ class GeneratorLMHead(nn.Module):
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
+
+        if self.add_one_linear:
+            weight = self.share_emb_pro(self.weight)
+        else:
+            weight = self.weight
         # project back to size of vocabulary with bias
-        x = F.linear(x, self.weight) + self.bias
+        x = F.linear(x, weight) + self.bias
         return x
 
 
@@ -267,7 +275,7 @@ class GeneratorEncoder(FairseqDecoder):
     by :class:`~fairseq.models.FairseqLanguageModel`.
     """
 
-    def __init__(self, args, dictionary):
+    def __init__(self, args, dictionary, share_embed_tokens):
         super().__init__(dictionary)
         self.args = args
         self.sentence_encoder = TransformerSentenceEncoder(
@@ -285,19 +293,18 @@ class GeneratorEncoder(FairseqDecoder):
             encoder_normalize_before=True,
             apply_bert_init=True,
             activation_fn=args.activation_fn,
-            share_embed_tokens=True,
+            share_embed_tokens=share_embed_tokens,
             shared_embedding_dim=args.encoder_embed_dim,
         )
         self.lm_head = GeneratorLMHead(
-            embed_dim=args.encoder_embed_dim,
+            embed_dim=int(args.encoder_embed_dim / args.generator_size_divider),
             output_dim=len(dictionary),
             activation_fn=args.activation_fn,
             weight=self.sentence_encoder.embed_tokens.weight,
+            share_emb_pro=self.sentence_encoder.embed_linear,
         )
 
-    def forward(self, src_tokens, features_only=False, 
-            return_all_hiddens=False, masked_tokens=None, 
-            shared_embedding=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -313,19 +320,15 @@ class GeneratorEncoder(FairseqDecoder):
                 - a dictionary of additional data, where 'inner_states'
                   is a list of hidden states.
         """
-        x, extra = self.extract_features(src_tokens, return_all_hiddens, shared_embedding)
+        x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
             x = self.output_layer(x, masked_tokens=masked_tokens)
         return x, extra
 
-    def extract_features(self, src_tokens, return_all_hiddens=False, shared_embedding=None, **unused):
-        if self.args.debug:
-            import pdb
-            pdb.set_trace()
+    def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
         inner_states, _ = self.sentence_encoder(
             src_tokens,
             last_state_only=not return_all_hiddens,
-            token_embs=shared_embedding,
         )
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
@@ -366,7 +369,7 @@ class DiscEncoder(FairseqDecoder):
         )
         self.lm_head = DiscLMHead(
             embed_dim=args.encoder_embed_dim,
-            output_dim=len(dictionary),
+            output_dim=1,
             activation_fn=args.activation_fn,
             weight=self.sentence_encoder.embed_tokens.weight,
         )
@@ -412,7 +415,7 @@ class DiscLMHead(nn.Module):
 
     def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
         super().__init__()
-        self.dense = nn.Linear(embed_dim, embed_dim, bias=False) # check if it dosen't need bias
+        self.dense = nn.Linear(embed_dim, output_dim, bias=False) # check if it dosen't need bias
         self.activation_fn = nn.Sigmoid()
 
     def forward(self, features, masked_tokens=None, **kwargs):
@@ -420,12 +423,11 @@ class DiscLMHead(nn.Module):
         # saves both memory and computation
         if masked_tokens is not None:
             features = features[masked_tokens, :]
-
         x = self.dense(features)
         x = self.activation_fn(x)
         return x
 
-@register_model_architecture('Electra', 'Electra')
+@register_model_architecture('electra', 'electra')
 def base_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
@@ -442,7 +444,7 @@ def base_architecture(args):
     args.pooler_dropout = getattr(args, 'pooler_dropout', 0.0)
 
 
-@register_model_architecture('Electra', 'Electra_base')
+@register_model_architecture('electra', 'electra_base')
 def Electra_base_architecture(args):
     base_architecture(args)
 

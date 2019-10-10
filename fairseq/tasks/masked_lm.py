@@ -54,6 +54,8 @@ class MaskedLMTask(FairseqTask):
                             help='sample random replacement words based on word frequencies')
         parser.add_argument('--mask-whole-words', default=False, action='store_true',
                             help='mask whole words; you may also want to set --bpe')
+        parser.add_argument('--loss-lamda', default=10.0, type=float,
+                            help='lamda trade-off between generator loss and discriminator loss')
 
     def __init__(self, args, dictionary):
         super().__init__(args)
@@ -71,7 +73,7 @@ class MaskedLMTask(FairseqTask):
         print('| dictionary: {} types'.format(len(dictionary)))
         return cls(args, dictionary)
 
-    def load_dataset(self, split, epoch=0, combine=False):
+    def load_dataset(self, split, epoch=0, combine=False, data_selector=None):
         """Load a given dataset split.
 
         Args:
