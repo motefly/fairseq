@@ -91,6 +91,8 @@ class TransformerSentenceEncoder(nn.Module):
         freeze_embeddings: bool = False,
         n_trans_layers_to_freeze: int = 0,
         export: bool = False,
+        share_embed_tokens: bool = True,
+        shared_embedding_dim: int = 768,
     ) -> None:
 
         super().__init__()
@@ -103,10 +105,14 @@ class TransformerSentenceEncoder(nn.Module):
         self.use_position_embeddings = use_position_embeddings
         self.apply_bert_init = apply_bert_init
         self.learned_pos_embedding = learned_pos_embedding
+        self.shared_embedding_dim = shared_embedding_dim
 
-        self.embed_tokens = nn.Embedding(
-            self.vocab_size, self.embedding_dim, self.padding_idx
-        )
+        if not share_embed_tokens:
+            self.embed_tokens = nn.Embedding(
+                self.vocab_size, self.embedding_dim, self.padding_idx
+            )
+        else:
+            self.embed_linear = nn.Linear(self.shared_embedding_dim, self.embedding_dim)
         self.embed_scale = embed_scale
 
         self.segment_embeddings = (
@@ -173,6 +179,7 @@ class TransformerSentenceEncoder(nn.Module):
         segment_labels: torch.Tensor = None,
         last_state_only: bool = False,
         positions: Optional[torch.Tensor] = None,
+        token_embs: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # compute padding mask. This is needed for multi-head attention
@@ -180,7 +187,11 @@ class TransformerSentenceEncoder(nn.Module):
         if not padding_mask.any():
             padding_mask = None
 
-        x = self.embed_tokens(tokens)
+        if token_embs is not None:
+            # if the embedding is shared, keep equal-size in the model
+            x = self.embed_linear(token_embs)
+        else:    
+            x = self.embed_tokens(tokens)
 
         if self.embed_scale is not None:
             x *= self.embed_scale
