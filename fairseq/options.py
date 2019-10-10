@@ -193,6 +193,8 @@ def get_parser(desc, default_task='translation'):
                         help='threshold FP16 loss scale from below')
     parser.add_argument('--user-dir', default=None,
                         help='path to a python module containing custom extensions (tasks and/or architectures)')
+    parser.add_argument('--empty-cache-freq', default=0, type=int,
+                        help='how often to clear the PyTorch CUDA cache (0 to disable)')
 
     from fairseq.registry import REGISTRIES
     for registry_name, REGISTRY in REGISTRIES.items():
@@ -224,6 +226,8 @@ def add_preprocess_args(parser):
                        help="comma separated, valid file prefixes")
     group.add_argument("--testpref", metavar="FP", default=None,
                        help="comma separated, test file prefixes")
+    group.add_argument("--align-suffix", metavar="FP", default=None,
+                       help="alignment file suffix")
     group.add_argument("--destdir", metavar="DIR", default="data-bin",
                        help="destination dir")
     group.add_argument("--thresholdtgt", metavar="N", default=0, type=int,

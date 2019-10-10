@@ -225,11 +225,16 @@ class Trainer(object):
 
         return extra_state
 
-    def get_train_iterator(self, epoch, combine=True, load_dataset=True):
+    def get_train_iterator(self, epoch, combine=True, load_dataset=True, data_selector=None):
         """Return an EpochBatchIterator over the training set for a given epoch."""
         if load_dataset:
             print('| loading train data for epoch {}'.format(epoch))
-            self.task.load_dataset(self.args.train_subset, epoch=epoch, combine=combine)
+            self.task.load_dataset(
+                self.args.train_subset,
+                epoch=epoch,
+                combine=combine,
+                data_selector=data_selector,
+            )
         return self.task.get_batch_iterator(
             dataset=self.task.dataset(self.args.train_subset),
             max_tokens=self.args.max_tokens,
@@ -313,10 +318,16 @@ class Trainer(object):
                         + '\n Skipping batch'
                     )
                     # TODO: print should really go to logger, this print goes
-                    # to stdout, which is buffered, which in many case is not
-                    # printed out if another exception happens
-                    # print(msg)
+                    # to stderr, which is buffered, which in many cases is not
+                    # printed out if another exception happens.
+                    # NB(jerry): added a flush to mitigate this
                     print(msg, file=sys.stderr)
+                    if torch.cuda.is_available() and hasattr(torch.cuda, "memory_summary"):
+                        for device_idx in range(torch.cuda.device_count()):
+                            print(torch.cuda.memory_summary(device=torch.cuda.device(device_idx)),
+                                  file=sys.stderr)
+                    sys.stderr.flush()
+
                     if raise_oom:
                         raise ValueError(msg)
                     ooms += 1
@@ -426,6 +437,14 @@ class Trainer(object):
 
             if 'nll_loss' in logging_output:
                 self.meters['train_nll_loss'].update(logging_output.get('nll_loss', 0), ntokens)
+
+            # clear CUDA cache to reduce memory fragmentation
+            if (self.args.empty_cache_freq > 0 and
+                    ((self.get_num_updates() + self.args.empty_cache_freq - 1) %
+                     self.args.empty_cache_freq) == 0 and
+                    torch.cuda.is_available() and
+                    not self.args.cpu):
+                torch.cuda.empty_cache()
         except OverflowError as e:
             print('| WARNING: overflow detected, ' + str(e))
             self.zero_grad()
