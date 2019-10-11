@@ -223,6 +223,7 @@ class FusedLAMB(torch.optim.Optimizer):
                  grad_averaging=True, set_grad_none=True,
                  max_grad_norm=1.0):
         from apex.multi_tensor_apply import multi_tensor_applier
+        self.multi_tensor_applier = multi_tensor_applier
         if amsgrad:
             raise RuntimeError('FusedLAMB does not support the AMSGrad variant.')
         defaults = dict(lr=lr, bias_correction=bias_correction,
@@ -303,7 +304,7 @@ class FusedLAMB(torch.optim.Optimizer):
                     raise RuntimeError('FusedLAMB only support fp16 and fp32.')
 
             if(len(g_16) > 0):
-                multi_tensor_applier(self.multi_tensor_lamb,
+                self.multi_tensor_applier(self.multi_tensor_lamb,
                                      self._dummy_overflow_buf,
                                      [g_16, p_16, m_16, v_16],
                                      group['lr'],
@@ -317,7 +318,7 @@ class FusedLAMB(torch.optim.Optimizer):
                                      self.adam_w_mode,
                                      group['max_grad_norm'])
             if(len(g_32) > 0):
-                multi_tensor_applier(self.multi_tensor_lamb,
+                self.multi_tensor_applier(self.multi_tensor_lamb,
                                      self._dummy_overflow_buf,
                                      [g_32, p_32, m_32, v_32],
                                      group['lr'],
