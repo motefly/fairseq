@@ -25,11 +25,11 @@ class FairseqLAMB(FairseqOptimizer):
     def __init__(self, args, params):
         super().__init__(args)
         if torch.cuda.is_available():
-            try:
-                from apex.optimizers import FusedLAMB as _FusedLAMB  # noqa
-                self._optimizer = FusedLAMB(params, **self.optimizer_config)
-            except ImportError:
-                self._optimizer = LAMB(params, **self.optimizer_config)
+            # try:
+            #     from apex.optimizers import FusedLAMB as _FusedLAMB  # noqa
+            #     self._optimizer = FusedLAMB(params, **self.optimizer_config)
+            # except ImportError:
+            self._optimizer = LAMB(params, **self.optimizer_config)
         else:
             self._optimizer = LAMB(params, **self.optimizer_config)
 

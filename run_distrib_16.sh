@@ -1,6 +1,6 @@
 TOTAL_UPDATES=100000    # Total number of training steps
 WARMUP_UPDATES=1 #24000    # Warmup the learning rate over this many updates
-PEAK_LR=0.0006          # Peak learning rate, adjust as needed
+PEAK_LR=0.0002          # Peak learning rate, adjust as needed
 TOKENS_PER_SAMPLE=512   # Max sequence length
 MAX_POSITIONS=512       # Num. positional embeddings (usually same as above)
 MAX_SENTENCES=8        # Number of sequences per batch (batch size)
