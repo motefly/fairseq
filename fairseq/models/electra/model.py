@@ -96,27 +96,32 @@ class Electra(FairseqLanguageModel):
             args.max_positions = args.tokens_per_sample
 
         disc_encoder = DiscEncoder(args, task.source_dictionary)
-        gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens)
+        if args.task == 'masked_lm':
+            gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens)
+        else:
+            gen_encoder = None
         return cls(args, gen_encoder, disc_encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, **kwargs):
         if classification_head_name is not None:
             features_only = True
 
-        # x-shape: (batch, src_len, vocab)
-        gen_x, _ = self.generator(src_tokens, features_only, return_all_hiddens, masked_tokens, **kwargs)
-        sample_probs = torch.softmax(gen_x, -1).view(-1, gen_x.size(-1))
-        # sampled_tokens-shape: (batch*src_len, 1)
-        sampled_tokens = torch.multinomial(sample_probs, 1).view(-1)
-        # if self.args.debug:
-        #     import pdb
-        #     pdb.set_trace()
+        if self.generator is not None:
+            # x-shape: (batch, src_len, vocab)
+            gen_x, _ = self.generator(src_tokens, features_only, return_all_hiddens, masked_tokens, **kwargs)
+            sample_probs = torch.softmax(gen_x, -1).view(-1, gen_x.size(-1)).detach()
+            # sampled_tokens-shape: (batch*src_len, 1)
+            sampled_tokens = torch.multinomial(sample_probs, 1).view(-1)
+            # if self.args.debug:
+            #     import pdb
+            #     pdb.set_trace()
 
-        if masked_tokens is not None:
-            src_tokens[masked_tokens] = sampled_tokens
-        else:
-            src_tokens = sampled_tokens.view(src_tokens.size())
-        # to-fix: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation:
+            # detach the gradient bp and construct a new input
+            src_tokens = src_tokens.clone()
+            if masked_tokens is not None:
+                src_tokens[masked_tokens] = sampled_tokens
+            else:
+                src_tokens = sampled_tokens.view(src_tokens.size())
         
         # for discriminator, predict all of the tokens
         disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, **kwargs)
@@ -415,7 +420,7 @@ class DiscLMHead(nn.Module):
 
     def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
         super().__init__()
-        self.dense = nn.Linear(embed_dim, output_dim, bias=False) # check if it dosen't need bias
+        self.dense = nn.Linear(embed_dim, output_dim) #, bias=False) # check if it dosen't need bias
         self.activation_fn = nn.Sigmoid()
 
     def forward(self, features, masked_tokens=None, **kwargs):

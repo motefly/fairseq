@@ -65,8 +65,8 @@ class ElectraLoss(FairseqCriterion):
         loss = gen_loss + self.args.loss_lamda * disc_loss
 
         logging_output = {
-            'loss': utils.item(loss.data) if reduce else loss.data,
-            'nll_loss': utils.item(loss.data) if reduce else loss.data,
+            'loss': utils.item(disc_loss.data) if reduce else disc_loss.data,
+            'nll_loss': utils.item(gen_loss.data) if reduce else gen_loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
@@ -82,7 +82,7 @@ class ElectraLoss(FairseqCriterion):
         sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
 
         agg_output = {
-            'loss': loss / sample_size / math.log(2),
+            'loss': loss / ntokens / math.log(2),
             'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2) if ntokens > 0 else 0.,
             'ntokens': ntokens,
             'nsentences': nsentences,

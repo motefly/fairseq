@@ -32,6 +32,8 @@ class TransformerSentenceEncoderLayer(nn.Module):
         add_bias_kv: bool = False,
         add_zero_attn: bool = False,
         export: bool = False,
+        # new added
+        encoder_normalize_before: bool = False,
     ) -> None:
 
         super().__init__()
@@ -51,6 +53,9 @@ class TransformerSentenceEncoderLayer(nn.Module):
             self_attention=True
         )
 
+        # new added
+        self.normalize_before = encoder_normalize_before
+        
         # layer norm associated with the self attention layer
         self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
         self.fc1 = nn.Linear(self.embedding_dim, ffn_embedding_dim)
@@ -70,6 +75,8 @@ class TransformerSentenceEncoderLayer(nn.Module):
         modules similar to the original Transformer imlementation.
         """
         residual = x
+        # new added
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
         x, attn = self.self_attn(
             query=x,
             key=x,
@@ -80,13 +87,25 @@ class TransformerSentenceEncoderLayer(nn.Module):
         )
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
-        x = self.self_attn_layer_norm(x)
+        # change 
+        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
+        # x = self.self_attn_layer_norm(x)
 
         residual = x
+        x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
         x = self.activation_fn(self.fc1(x))
         x = F.dropout(x, p=self.activation_dropout, training=self.training)
         x = self.fc2(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
-        x = self.final_layer_norm(x)
+        x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
+        # x = self.final_layer_norm(x)
+        
         return x, attn
+    
+    def maybe_layer_norm(self, layer_norm, x, before=False, after=False):
+        assert before ^ after
+        if after ^ self.normalize_before:
+            return layer_norm(x)
+        else:
+            return x

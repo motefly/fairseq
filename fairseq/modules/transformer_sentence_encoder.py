@@ -148,15 +148,16 @@ class TransformerSentenceEncoder(nn.Module):
                     add_bias_kv=add_bias_kv,
                     add_zero_attn=add_zero_attn,
                     export=export,
+                    encoder_normalize_before=encoder_normalize_before,
                 )
                 for _ in range(num_encoder_layers)
             ]
         )
 
-        if encoder_normalize_before:
-            self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
-        else:
-            self.emb_layer_norm = None
+        # if encoder_normalize_before:
+        #     self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
+        # else:
+        #     self.emb_layer_norm = None
 
         # Apply initialization of model params after building the model
         if self.apply_bert_init:
@@ -171,7 +172,7 @@ class TransformerSentenceEncoder(nn.Module):
             freeze_module_params(self.embed_tokens)
             freeze_module_params(self.segment_embeddings)
             freeze_module_params(self.embed_positions)
-            freeze_module_params(self.emb_layer_norm)
+            # freeze_module_params(self.emb_layer_norm)
 
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
@@ -205,8 +206,8 @@ class TransformerSentenceEncoder(nn.Module):
         if self.segment_embeddings is not None and segment_labels is not None:
             x += self.segment_embeddings(segment_labels)
 
-        if self.emb_layer_norm is not None:
-            x = self.emb_layer_norm(x)
+        # if self.emb_layer_norm is not None:
+        #     x = self.emb_layer_norm(x)
 
         x = F.dropout(x, p=self.dropout, training=self.training)
 
