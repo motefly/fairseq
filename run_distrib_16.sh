@@ -13,7 +13,7 @@ DATA_DIR=data-bin/wiki_book_32768
        $(which fairseq-train) $DATA_DIR \
        --task masked_lm --criterion electra \
        --arch electra_base --sample-break-mode complete --tokens-per-sample $TOKENS_PER_SAMPLE \
-       --optimizer lamb --lamb-betas '(0.9,0.999)' --lamb-eps 1e-6 --clip-norm 0.0 \
+       --optimizer lamb --lamb-betas '(0.9,0.999)' --lamb-eps 1e-6 --clip-norm 0.0 --loss-lamda 50.0 \
        --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
        --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
        --max-sentences $MAX_SENTENCES --update-freq $UPDATE_FREQ \
