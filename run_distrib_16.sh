@@ -11,8 +11,8 @@ DATA_DIR=data-bin/wiki_book_32768
  #      --nnodes=2 --node_rank=1 --master_addr="10.0.10.4" \
   #     --master_port=8080 \
        $(which fairseq-train) $DATA_DIR \
-       --task masked_lm --criterion masked_lm \
-       --arch roberta_base --sample-break-mode complete --tokens-per-sample $TOKENS_PER_SAMPLE \
+       --task masked_lm --criterion electra \
+       --arch electra_base --sample-break-mode complete --tokens-per-sample $TOKENS_PER_SAMPLE \
        --optimizer lamb --lamb-betas '(0.9,0.999)' --lamb-eps 1e-6 --clip-norm 0.0 \
        --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
        --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
