@@ -96,7 +96,7 @@ class Electra(FairseqLanguageModel):
             args.max_positions = args.tokens_per_sample
 
         disc_encoder = DiscEncoder(args, task.source_dictionary)
-        if args.task == 'masked_lm':
+        if args.task == 'electra':
             gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens)
         else:
             gen_encoder = None

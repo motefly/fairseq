@@ -11,14 +11,11 @@ DATA_DIR=data-bin/wiki_book_32768
  #      --nnodes=2 --node_rank=1 --master_addr="10.0.10.4" \
   #     --master_port=8080 \
        python train.py $DATA_DIR \
-       --task masked_lm --criterion electra \
+       --task electra --criterion electra \
        --arch electra_small --sample-break-mode complete --tokens-per-sample $TOKENS_PER_SAMPLE \
        --optimizer lamb --lamb-betas '(0.9,0.999)' --lamb-eps 1e-6 --clip-norm 0.0 \
        --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
        --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
        --max-sentences $MAX_SENTENCES --update-freq $UPDATE_FREQ \
        --max-update $TOTAL_UPDATES --log-format simple --log-interval 1 --save-interval-updates 10000 --keep-interval-updates 10 --loss-lamda 50.0 \
-       --encoder-normalize-before --skip-invalid-size-inputs-valid-test --tensorboard-logdir tsb_log --log-format tqdm --debug
-     #   --distributed-world-size 16 --distributed-rank 12 --distributed-init-method "tcp://10.0.10.4:8080" \
-       
-       # --restore-file out_model/roberta_base/model.pt
+       --encoder-normalize-before --skip-invalid-size-inputs-valid-test --tensorboard-logdir tsb_log --log-format tqdm --ddp-backend=no_c10d 
