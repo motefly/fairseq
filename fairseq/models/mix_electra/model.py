@@ -2,9 +2,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-"""
-RoBERTa: A Robustly Optimized BERT Pretraining Approach.
-"""
 
 import torch
 import torch.nn as nn
@@ -23,19 +20,19 @@ from fairseq.modules import (
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
-from .hub_interface import RobertaHubInterface
+from .hub_interface import MixelectraHubInterface
 
 
-@register_model('roberta')
-class RobertaModel(FairseqLanguageModel):
+@register_model('mixelectra')
+class MixelectraModel(FairseqLanguageModel):
 
     @classmethod
     def hub_models(cls):
         return {
-            'roberta.base': 'http://dl.fbaipublicfiles.com/fairseq/models/roberta.base.tar.gz',
-            'roberta.large': 'http://dl.fbaipublicfiles.com/fairseq/models/roberta.large.tar.gz',
-            'roberta.large.mnli': 'http://dl.fbaipublicfiles.com/fairseq/models/roberta.large.mnli.tar.gz',
-            'roberta.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/roberta.large.wsc.tar.gz',
+            'mixelectra.base': 'http://dl.fbaipublicfiles.com/fairseq/models/mixelectra.base.tar.gz',
+            'mixelectra.large': 'http://dl.fbaipublicfiles.com/fairseq/models/mixelectra.large.tar.gz',
+            'mixelectra.large.mnli': 'http://dl.fbaipublicfiles.com/fairseq/models/mixelectra.large.mnli.tar.gz',
+            'mixelectra.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/mixelectra.large.wsc.tar.gz',
         }
 
     def __init__(self, args, encoder):
@@ -89,7 +86,7 @@ class RobertaModel(FairseqLanguageModel):
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
 
-        encoder = RobertaEncoder(args, task.source_dictionary)
+        encoder = MixelectraEncoder(args, task.source_dictionary)
         return cls(args, encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
@@ -114,7 +111,7 @@ class RobertaModel(FairseqLanguageModel):
                         name, num_classes, prev_num_classes, inner_dim, prev_inner_dim
                     )
                 )
-        self.classification_heads[name] = RobertaClassificationHead(
+        self.classification_heads[name] = MixelectraClassificationHead(
             self.args.encoder_embed_dim,
             inner_dim or self.args.encoder_embed_dim,
             num_classes,
@@ -138,7 +135,7 @@ class RobertaModel(FairseqLanguageModel):
             load_checkpoint_heads=True,
             **kwargs,
         )
-        return RobertaHubInterface(x['args'], x['task'], x['models'][0])
+        return MixelectraHubInterface(x['args'], x['task'], x['models'][0])
 
     def upgrade_state_dict_named(self, state_dict, name):
         prefix = name + '.' if name != '' else ''
@@ -187,7 +184,7 @@ class RobertaModel(FairseqLanguageModel):
                     state_dict[prefix + 'classification_heads.' + k] = v
 
 
-class RobertaLMHead(nn.Module):
+class MixelectraLMHead(nn.Module):
     """Head for masked language modeling."""
 
     def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
@@ -200,22 +197,28 @@ class RobertaLMHead(nn.Module):
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight = weight
         self.bias = nn.Parameter(torch.zeros(output_dim))
+        self.unmask_out = nn.Linear(embed_dim, 1)
 
     def forward(self, features, masked_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
         # saves both memory and computation
-        if masked_tokens is not None:
-            features = features[masked_tokens, :]
-
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
+
+        if masked_tokens is not None:
+            x_mask = x[masked_tokens, :]
+            x_unmask = x[masked_tokens==False, :]
         # project back to size of vocabulary with bias
-        x = F.linear(x, self.weight) + self.bias
-        return x
+        x_mask = F.linear(x_mask, self.weight) + self.bias
+
+        x_unmask = self.unmask_out(x_unmask)
+        x_unmask = torch.sigmoid(x_unmask)
+        
+        return x_mask, x_unmask
 
 
-class RobertaClassificationHead(nn.Module):
+class MixelectraClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
     def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout):
@@ -235,8 +238,8 @@ class RobertaClassificationHead(nn.Module):
         return x
 
 
-class RobertaEncoder(FairseqDecoder):
-    """RoBERTa encoder.
+class MixelectraEncoder(FairseqDecoder):
+    """ encoder.
 
     Implements the :class:`~fairseq.models.FairseqDecoder` interface required
     by :class:`~fairseq.models.FairseqLanguageModel`.
@@ -261,7 +264,7 @@ class RobertaEncoder(FairseqDecoder):
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
-        self.lm_head = RobertaLMHead(
+        self.lm_head = MixelectraLMHead(
             embed_dim=args.encoder_embed_dim,
             output_dim=len(dictionary),
             activation_fn=args.activation_fn,
@@ -305,7 +308,7 @@ class RobertaEncoder(FairseqDecoder):
         return self.args.max_positions
 
 
-@register_model_architecture('roberta', 'roberta')
+@register_model_architecture('mixelectra', 'mixelectra')
 def base_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
@@ -321,33 +324,23 @@ def base_architecture(args):
     args.pooler_dropout = getattr(args, 'pooler_dropout', 0.0)
 
 
-@register_model_architecture('roberta', 'roberta_base')
-def roberta_base_architecture(args):
+@register_model_architecture('mixelectra', 'mixelectra_base')
+def mixelectra_base_architecture(args):
     base_architecture(args)
-
-@register_model_architecture('roberta', 'roberta_small')
-def roberta_small_architecture(args):
+    
+@register_model_architecture('mixelectra', 'mixelectra_small')
+def mixelectra_small_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
 
     base_architecture(args)
-    
-@register_model_architecture('roberta', 'roberta_large')
-def roberta_large_architecture(args):
+
+@register_model_architecture('mixelectra', 'mixelectra_large')
+def mixelectra_large_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
-    base_architecture(args)
-
-
-@register_model_architecture('roberta', 'xlm')
-def xlm_architecture(args):
-    args.encoder_layers = getattr(args, 'encoder_layers', 16)
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1280)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1280*4)
-    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
-
     base_architecture(args)
