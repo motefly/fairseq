@@ -72,6 +72,12 @@ class ElectraLoss(FairseqCriterion):
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
         }
+        logging_output.update(
+            disc_loss=disc_loss.item()
+        )
+        logging_output.update(
+            gen_loss=gen_loss.item()
+        )
         return loss, sample_size, logging_output
 
     @staticmethod
@@ -89,4 +95,10 @@ class ElectraLoss(FairseqCriterion):
             'nsentences': nsentences,
             'sample_size': sample_size,
         }
+
+        disc_loss = sum(log.get('disc_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(disc_loss=disc_loss)
+        gen_loss = sum(log.get('gen_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(gen_loss=gen_loss)
+        
         return agg_output
