@@ -199,16 +199,16 @@ class MixelectraLMHead(nn.Module):
         self.bias = nn.Parameter(torch.zeros(output_dim))
         self.unmask_out = nn.Linear(embed_dim, 1)
 
-    def forward(self, features, masked_tokens=None, **kwargs):
+    def forward(self, features, mlm_tokens=None, bin_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
         # saves both memory and computation
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
 
-        if masked_tokens is not None:
-            x_mask = x[masked_tokens, :]
-            x_unmask = x[masked_tokens==False, :]
+        if mlm_tokens is not None:
+            x_mask = x[mlm_tokens, :]
+        x_unmask = x[bin_tokens, :]
         # project back to size of vocabulary with bias
         x_mask = F.linear(x_mask, self.weight) + self.bias
 
@@ -271,7 +271,7 @@ class MixelectraEncoder(FairseqDecoder):
             weight=self.sentence_encoder.embed_tokens.weight,
         )
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, mlm_tokens=None, bin_tokens=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -289,7 +289,7 @@ class MixelectraEncoder(FairseqDecoder):
         """
         x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
-            x = self.output_layer(x, masked_tokens=masked_tokens)
+            x = self.output_layer(x, mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -300,8 +300,8 @@ class MixelectraEncoder(FairseqDecoder):
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
-    def output_layer(self, features, masked_tokens=None, **unused):
-        return self.lm_head(features, masked_tokens)
+    def output_layer(self, features, mlm_tokens=None, bin_tokens=None, **unused):
+        return self.lm_head(features, mlm_tokens, bin_tokens)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""

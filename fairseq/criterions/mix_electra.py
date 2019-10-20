@@ -31,20 +31,31 @@ class MixElectraLoss(FairseqCriterion):
         """
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
-        masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # sample['target'].ne(self.padding_idx)
-        sample_size = masked_tokens.int().sum().item()
+
+        masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # 
+        not_pad_tokens = sample['target'].ne(self.padding_idx)
+
+        import pdb
+        pdb.set_trace()
+
+        mlm_sample_size = (masked_tokens & not_pad_tokens).int().sum().item()
+        bin_sample_size = ((~masked_tokens) & not_pad_tokens).int().sum().item()
 
         # (Rare case) When all tokens are masked, the model results in empty
         # tensor and gives CUDA error.
-        if sample_size == 0:
-            masked_tokens = None
+        if mlm_sample_size == 0:
+            mlm_tokens = None
+            bin_tokens = not_pad_tokens
+        else:
+            mlm_tokens = masked_tokens & not_pad_tokens
+            bin_tokens = (~masked_tokens) & not_pad_tokens
 
-        mask_logits, unmask_logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
+        mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
         targets = model.get_targets(sample, [mask_logits])
 
-        if sample_size != 0:
-            mask_targets = targets[masked_tokens]
-            unmask_targets = targets.eq(sample['net_input']['src_tokens'])[masked_tokens==False].float()
+        if mlm_sample_size != 0:
+            mask_targets = targets[mlm_tokens]
+            unmask_targets = targets.eq(sample['net_input']['src_tokens'])[bin_tokens].float()
 
         loss1 = F.nll_loss(
             F.log_softmax(
@@ -68,9 +79,16 @@ class MixElectraLoss(FairseqCriterion):
             'nll_loss': utils.item(loss1.data) if reduce else loss1.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
-            'sample_size': sample_size,
+            'sample_size': mlm_sample_size,
+            'bin_sample_size': bin_sample_size,
         }
-        return loss, sample_size, logging_output
+        logging_output.update(
+            disc_loss=disc_loss.item()
+        )
+        logging_output.update(
+            gen_loss=gen_loss.item()
+        )
+        return loss, mlm_sample_size, logging_output
 
     @staticmethod
     def aggregate_logging_outputs(logging_outputs):
@@ -79,12 +97,19 @@ class MixElectraLoss(FairseqCriterion):
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
         nsentences = sum(log.get('nsentences', 0) for log in logging_outputs)
         sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
+        bin_sample_size = sum(log.get('bin_sample_size', 0) for log in logging_outputs)
 
         agg_output = {
-            'loss': loss / (ntokens-sample_size) / math.log(2),
+            'loss': loss / bin_sample_size / math.log(2),
             'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2) if ntokens > 0 else 0.,
             'ntokens': ntokens,
             'nsentences': nsentences,
             'sample_size': sample_size,
+            'bin_sample_size': bin_sample_size,
         }
+        disc_loss = sum(log.get('disc_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(disc_loss=disc_loss)
+        gen_loss = sum(log.get('gen_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(gen_loss=gen_loss)
+
         return agg_output
