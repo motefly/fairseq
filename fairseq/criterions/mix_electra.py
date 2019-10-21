@@ -35,9 +35,6 @@ class MixElectraLoss(FairseqCriterion):
         masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # 
         not_pad_tokens = sample['target'].ne(self.padding_idx)
 
-        import pdb
-        pdb.set_trace()
-
         mlm_sample_size = (masked_tokens & not_pad_tokens).int().sum().item()
         bin_sample_size = ((~masked_tokens) & not_pad_tokens).int().sum().item()
 
@@ -83,10 +80,10 @@ class MixElectraLoss(FairseqCriterion):
             'bin_sample_size': bin_sample_size,
         }
         logging_output.update(
-            disc_loss=disc_loss.item()
+            mlm_loss=loss1.item()
         )
         logging_output.update(
-            gen_loss=gen_loss.item()
+            bin_loss=loss2.item()
         )
         return loss, mlm_sample_size, logging_output
 
@@ -107,9 +104,9 @@ class MixElectraLoss(FairseqCriterion):
             'sample_size': sample_size,
             'bin_sample_size': bin_sample_size,
         }
-        disc_loss = sum(log.get('disc_loss', 0) for log in logging_outputs) / len(logging_outputs)
-        agg_output.update(disc_loss=disc_loss)
-        gen_loss = sum(log.get('gen_loss', 0) for log in logging_outputs) / len(logging_outputs)
-        agg_output.update(gen_loss=gen_loss)
+        bin_loss = sum(log.get('bin_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(bin_loss=bin_loss)
+        mlm_loss = sum(log.get('mlm_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(mlm_loss=mlm_loss)
 
         return agg_output
