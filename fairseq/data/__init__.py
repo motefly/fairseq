@@ -27,6 +27,7 @@ from .noising import NoisingDataset
 from .numel_dataset import NumelDataset
 from .num_samples_dataset import NumSamplesDataset
 from .offset_tokens_dataset import OffsetTokensDataset
+from .electra_dataset import ElectraDataset
 from .pad_dataset import LeftPadDataset, PadDataset, RightPadDataset
 from .prepend_dataset import PrependDataset
 from .prepend_token_dataset import PrependTokenDataset

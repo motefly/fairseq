@@ -30,7 +30,11 @@ class ElectraLoss(FairseqCriterion):
         3) logging outputs to display while training
         """
         # compute MLM loss
-        masked_tokens = sample['target'].ne(self.padding_idx)
+        mask_idx = self.task.dictionary.index('<mask>')
+        masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # masked_tokens = sample['target'].ne(self.padding_idx)
+        
+        not_pad_tokens = sample['target'].ne(self.padding_idx)
+        
         sample_size = masked_tokens.int().sum().item()
 
         # (Rare case) When all tokens are masked, the model results in empty
@@ -55,12 +59,10 @@ class ElectraLoss(FairseqCriterion):
             ignore_index=self.padding_idx,
         )
 
-        disc_targets = disc_tokens.eq(sample['net_input']['src_tokens']).float()
+        disc_targets = disc_tokens.eq(sample['target'])[not_pad_tokens].float()
 
-        disc_loss = F.binary_cross_entropy(disc_output.float().view(-1),
+        disc_loss = F.binary_cross_entropy(disc_output[not_pad_tokens].float().view(-1),
             disc_targets.view(-1), reduction='sum')
-        # import pdb
-        # pdb.set_trace()
 
         loss = gen_loss + self.args.loss_lamda * disc_loss
 
@@ -71,6 +73,12 @@ class ElectraLoss(FairseqCriterion):
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
         }
+        logging_output.update(
+            disc_loss=disc_loss.item()
+        )
+        logging_output.update(
+            gen_loss=gen_loss.item()
+        )
         return loss, sample_size, logging_output
 
     @staticmethod
@@ -88,4 +96,10 @@ class ElectraLoss(FairseqCriterion):
             'nsentences': nsentences,
             'sample_size': sample_size,
         }
+
+        disc_loss = sum(log.get('disc_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(disc_loss=disc_loss)
+        gen_loss = sum(log.get('gen_loss', 0) for log in logging_outputs) / len(logging_outputs)
+        agg_output.update(gen_loss=gen_loss)
+        
         return agg_output
