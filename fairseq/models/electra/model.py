@@ -128,7 +128,11 @@ class Electra(FairseqLanguageModel):
 
         if classification_head_name is not None:
             disc_x = self.classification_heads[classification_head_name](disc_x)
-        return gen_x, disc_x, src_tokens, extra
+        
+        if self.generator is not None:
+            return gen_x, disc_x, src_tokens, extra
+        else:
+            return disc_x, extra
 
     def register_classification_head(self, name, num_classes=None, inner_dim=None, **kwargs):
         """Register a classification head."""
