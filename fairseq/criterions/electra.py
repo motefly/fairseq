@@ -61,7 +61,7 @@ class ElectraLoss(FairseqCriterion):
 
         disc_targets = disc_tokens.eq(sample['target'])[not_pad_tokens].float()
 
-        disc_loss = F.binary_cross_entropy(disc_output[not_pad_tokens].float().view(-1),
+        disc_loss = F.binary_cross_entropy_with_logits(disc_output[not_pad_tokens].float().view(-1),
             disc_targets.view(-1), reduction='sum')
 
         loss = gen_loss + self.args.loss_lamda * disc_loss

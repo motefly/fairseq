@@ -378,9 +378,7 @@ class DiscEncoder(FairseqDecoder):
         )
         self.lm_head = DiscLMHead(
             embed_dim=args.encoder_embed_dim,
-            output_dim=1,
-            activation_fn=args.activation_fn,
-            weight=self.sentence_encoder.embed_tokens.weight,
+            output_dim=1
         )
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
@@ -419,22 +417,21 @@ class DiscEncoder(FairseqDecoder):
         """Maximum output length supported by the encoder."""
         return self.args.max_positions
 
+
 class DiscLMHead(nn.Module):
     """Head for masked language modeling."""
 
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
+    def __init__(self, embed_dim, output_dim):
         super().__init__()
         self.dense = nn.Linear(embed_dim, output_dim) #, bias=False) # check if it dosen't need bias
-        self.activation_fn = nn.Sigmoid()
 
     def forward(self, features, masked_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
         # saves both memory and computation
         if masked_tokens is not None:
             features = features[masked_tokens, :]
-        x = self.dense(features)
-        x = self.activation_fn(x)
-        return x
+        return self.dense(features)
+
 
 @register_model_architecture('electra', 'electra')
 def base_architecture(args):
