@@ -64,7 +64,7 @@ class MixElectraLoss(FairseqCriterion):
             reduction='sum',
             ignore_index=self.padding_idx,
         )
-        loss2 = F.binary_cross_entropy(
+        loss2 = F.binary_cross_entropy_with_logits(
             unmask_logits.float().view(-1),
             unmask_targets.view(-1),
             reduction='sum'

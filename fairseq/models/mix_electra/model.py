@@ -213,7 +213,7 @@ class MixelectraLMHead(nn.Module):
         x_mask = F.linear(x_mask, self.weight) + self.bias
 
         x_unmask = self.unmask_out(x_unmask)
-        x_unmask = torch.sigmoid(x_unmask)
+        # x_unmask = torch.sigmoid(x_unmask)
         
         return x_mask, x_unmask
 
