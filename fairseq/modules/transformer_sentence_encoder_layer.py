@@ -97,9 +97,9 @@ class TransformerSentenceEncoderLayer(nn.Module):
         x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
         x = self.activation_fn(self.fc_pre(x, shuffle_output=True))
         x = self.activation_fn(self.fc1(x))
-        #x = F.dropout(x, p=self.activation_dropout, training=self.training)
+        x = F.dropout(x, p=self.activation_dropout, training=self.training)
         x = self.fc2(x)
-        #x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
         x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
         # x = self.final_layer_norm(x)

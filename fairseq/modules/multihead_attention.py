@@ -36,7 +36,6 @@ class GroupFC(nn.Module):
         out = out.transpose(0, 1)
         if shuffle_output:
             out = out.transpose(1, 2)
-        # multiply k, like dropout
         out = out.contiguous().view(size[0], size[1], -1)
         return out
 
@@ -232,7 +231,7 @@ class MultiheadAttention(nn.Module):
         if before_softmax:
             return attn_weights, v
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
-        #attn_probs = F.dropout(attn_weights_float, p=self.dropout, training=self.training)
+        attn_probs = F.dropout(attn_weights_float, p=self.dropout, training=self.training)
 
         attn = torch.bmm(attn_weights_float, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
