@@ -11,6 +11,36 @@ import torch.nn.functional as F
 from fairseq import utils
 
 
+class GroupFC(nn.Module):
+    def __init__(self, input_dim, output_dim, bias=True, ngroups=4):
+        super().__init__()
+        self.k = ngroups
+        self.weight = Parameter(torch.Tensor(self.k, input_dim // self.k, output_dim // self.k))
+        stdv = (6.0 /(input_dim + output_dim)) ** 0.5
+        self.weight.data.uniform_(-stdv, stdv)
+        if bias:
+            self.bias = Parameter(torch.Tensor(self.k, 1, output_dim//self.k))
+            self.bias.data.fill_(0)
+        else:
+            self.bias = None
+
+    def forward(self, x, shuffle_output=False):
+        size = x.size()
+        x = x.view(size[0] * size[1], self.k, -1)
+        out = x.transpose(0, 1)
+        weight = self.weight * self.k
+        if self.bias is not None:
+            out = torch.baddbmm(self.bias, out, weight)
+        else:
+            out = torch.bmm(out, weight)
+        out = out.transpose(0, 1)
+        if shuffle_output:
+            out = out.transpose(1, 2)
+        # multiply k, like dropout
+        out = out.contiguous().view(size[0], size[1], -1)
+        return out
+
+
 class MultiheadAttention(nn.Module):
     """Multi-headed attention.
 
@@ -38,19 +68,12 @@ class MultiheadAttention(nn.Module):
         assert not self.self_attention or self.qkv_same_dim, 'Self-attention requires query, key and ' \
                                                              'value to be of the same size'
 
-        if self.qkv_same_dim:
-            self.in_proj_weight = Parameter(torch.Tensor(3 * embed_dim, embed_dim))
-        else:
-            self.k_proj_weight = Parameter(torch.Tensor(embed_dim, self.kdim))
-            self.v_proj_weight = Parameter(torch.Tensor(embed_dim, self.vdim))
-            self.q_proj_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
+        self.in_proj_pre = GroupFC(embed_dim, embed_dim, bias=False)
+        self.in_proj = GroupFC(embed_dim, embed_dim * 3, bias=bias)
 
-        if bias:
-            self.in_proj_bias = Parameter(torch.Tensor(3 * embed_dim))
-        else:
-            self.register_parameter('in_proj_bias', None)
+        self.register_parameter('in_proj_bias', None)
 
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = GroupFC(embed_dim, embed_dim, bias=bias)
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
@@ -64,27 +87,10 @@ class MultiheadAttention(nn.Module):
 
         self.onnx_trace = False
 
-        self.enable_torch_version = False
-        if hasattr(F, "multi_head_attention_forward"):
-            self.enable_torch_version = True
-        else:
-            self.enable_torch_version = False
-
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
     def reset_parameters(self):
-        if self.qkv_same_dim:
-            nn.init.xavier_uniform_(self.in_proj_weight)
-        else:
-            nn.init.xavier_uniform_(self.k_proj_weight)
-            nn.init.xavier_uniform_(self.v_proj_weight)
-            nn.init.xavier_uniform_(self.q_proj_weight)
-
-        nn.init.xavier_uniform_(self.out_proj.weight)
-        if self.in_proj_bias is not None:
-            nn.init.constant_(self.in_proj_bias, 0.)
-            nn.init.constant_(self.out_proj.bias, 0.)
         if self.bias_k is not None:
             nn.init.xavier_normal_(self.bias_k)
         if self.bias_v is not None:
@@ -125,29 +131,6 @@ class MultiheadAttention(nn.Module):
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
-        if self.enable_torch_version and not self.onnx_trace and incremental_state is None and not static_kv:
-            if self.qkv_same_dim:
-                return F.multi_head_attention_forward(query, key, value,
-                                                      self.embed_dim, self.num_heads,
-                                                      self.in_proj_weight,
-                                                      self.in_proj_bias, self.bias_k, self.bias_v,
-                                                      self.add_zero_attn, self.dropout,
-                                                      self.out_proj.weight, self.out_proj.bias,
-                                                      self.training, key_padding_mask, need_weights,
-                                                      attn_mask)
-            else:
-                return F.multi_head_attention_forward(query, key, value,
-                                                      self.embed_dim, self.num_heads,
-                                                      torch.empty([0]),
-                                                      self.in_proj_bias, self.bias_k, self.bias_v,
-                                                      self.add_zero_attn, self.dropout,
-                                                      self.out_proj.weight, self.out_proj.bias,
-                                                      self.training, key_padding_mask, need_weights,
-                                                      attn_mask, use_separate_proj_weight=True,
-                                                      q_proj_weight=self.q_proj_weight,
-                                                      k_proj_weight=self.k_proj_weight,
-                                                      v_proj_weight=self.v_proj_weight)
-
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if 'prev_key' in saved_state:
@@ -159,23 +142,8 @@ class MultiheadAttention(nn.Module):
         else:
             saved_state = None
 
-        if self.self_attention:
-            # self-attention
-            q, k, v = self.in_proj_qkv(query)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            q = self.in_proj_q(query)
-            if key is None:
-                assert value is None
-                k = v = None
-            else:
-                k = self.in_proj_k(key)
-                v = self.in_proj_v(key)
+        q, k, v = self.in_proj_qkv(query, bsz)
 
-        else:
-            q = self.in_proj_q(query)
-            k = self.in_proj_k(key)
-            v = self.in_proj_v(value)
         q *= self.scaling
 
         if self.bias_k is not None:
@@ -188,11 +156,11 @@ class MultiheadAttention(nn.Module):
                 key_padding_mask = torch.cat(
                     [key_padding_mask, key_padding_mask.new_zeros(key_padding_mask.size(0), 1)], dim=1)
 
-        q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        q = q.view(bsz * self.num_heads, -1, self.head_dim)
         if k is not None:
-            k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            k = k.view(bsz * self.num_heads, -1, self.head_dim)
         if v is not None:
-            v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            v = v.view(bsz * self.num_heads, -1, self.head_dim)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
@@ -263,12 +231,10 @@ class MultiheadAttention(nn.Module):
 
         if before_softmax:
             return attn_weights, v
-
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
-        attn_weights = attn_weights_float.type_as(attn_weights)
-        attn_probs = F.dropout(attn_weights_float.type_as(attn_weights), p=self.dropout, training=self.training)
+        #attn_probs = F.dropout(attn_weights_float, p=self.dropout, training=self.training)
 
-        attn = torch.bmm(attn_probs, v)
+        attn = torch.bmm(attn_weights_float, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if (self.onnx_trace and attn.size(1) == 1):
             # when ONNX tracing a single decoder step (sequence length == 1)
@@ -278,8 +244,9 @@ class MultiheadAttention(nn.Module):
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
 
+
         if need_weights:
-            attn_weights = attn_weights_float.view(bsz, self.num_heads, tgt_len, src_len).transpose(1, 0)
+            attn_weights = attn_weights_float.type_as(attn_weights).view(bsz, self.num_heads, tgt_len, src_len).transpose(1, 0)
             if not need_head_weights:
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
@@ -288,45 +255,11 @@ class MultiheadAttention(nn.Module):
 
         return attn, attn_weights
 
-    def in_proj_qkv(self, query):
-        return self._in_proj(query).chunk(3, dim=-1)
-
-    def in_proj_q(self, query):
-        if self.qkv_same_dim:
-            return self._in_proj(query, end=self.embed_dim)
-        else:
-            bias = self.in_proj_bias
-            if bias is not None:
-                bias = bias[:self.embed_dim]
-            return F.linear(query, self.q_proj_weight, bias)
-
-    def in_proj_k(self, key):
-        if self.qkv_same_dim:
-            return self._in_proj(key, start=self.embed_dim, end=2 * self.embed_dim)
-        else:
-            weight = self.k_proj_weight
-            bias = self.in_proj_bias
-            if bias is not None:
-                bias = bias[self.embed_dim:2 * self.embed_dim]
-            return F.linear(key, weight, bias)
-
-    def in_proj_v(self, value):
-        if self.qkv_same_dim:
-            return self._in_proj(value, start=2 * self.embed_dim)
-        else:
-            weight = self.v_proj_weight
-            bias = self.in_proj_bias
-            if bias is not None:
-                bias = bias[2 * self.embed_dim:]
-            return F.linear(value, weight, bias)
-
-    def _in_proj(self, input, start=0, end=None):
-        weight = self.in_proj_weight
-        bias = self.in_proj_bias
-        weight = weight[start:end, :]
-        if bias is not None:
-            bias = bias[start:end]
-        return F.linear(input, weight, bias)
+    def in_proj_qkv(self, query, bsz):
+        out = self.in_proj_pre(query.contiguous(), True)
+        out = F.relu(out)
+        # out = query.contiguous()
+        return self.in_proj(out).view(-1, bsz * self.num_heads, self.head_dim * 3).transpose(0, 1).chunk(3, dim=-1)
 
     def reorder_incremental_state(self, incremental_state, new_order):
         """Reorder buffered internal state (for incremental generation)."""
