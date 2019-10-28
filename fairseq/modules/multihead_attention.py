@@ -233,7 +233,7 @@ class MultiheadAttention(nn.Module):
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_probs = F.dropout(attn_weights_float, p=self.dropout, training=self.training)
 
-        attn = torch.bmm(attn_weights_float, v)
+        attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if (self.onnx_trace and attn.size(1) == 1):
             # when ONNX tracing a single decoder step (sequence length == 1)
