@@ -15,6 +15,8 @@ class GroupFC(nn.Module):
     def __init__(self, input_dim, output_dim, bias=True, ngroups=4):
         super().__init__()
         self.k = ngroups
+        self.in_feature = input_dim
+        self.out_feature = output_dim
         self.weight = Parameter(torch.Tensor(self.k, input_dim // self.k, output_dim // self.k))
         stdv = (6.0 /(input_dim + output_dim)) ** 0.5
         self.weight.data.uniform_(-stdv, stdv)
@@ -25,19 +27,25 @@ class GroupFC(nn.Module):
             self.bias = None
 
     def forward(self, x, shuffle_output=False):
-        size = x.size()
-        x = x.view(size[0] * size[1], self.k, -1)
-        out = x.transpose(0, 1)
-        weight = self.weight * self.k
-        if self.bias is not None:
-            out = torch.baddbmm(self.bias, out, weight)
-        else:
-            out = torch.bmm(out, weight)
-        out = out.transpose(0, 1)
-        if shuffle_output:
-            out = out.transpose(1, 2)
-        out = out.contiguous().view(size[0], size[1], -1)
+        with torch.autograd.profiler.record_function("groupfc"):
+            size = x.size()
+            x = x.view(size[0] * size[1], self.k, -1)
+            out = x.transpose(0, 1)
+            weight = self.weight * self.k
+            if self.bias is not None:
+                with torch.autograd.profiler.record_function("groupfc:bmm"):
+                    out = torch.baddbmm(self.bias, out, weight)
+            else:
+                with torch.autograd.profiler.record_function("groupfc:bmm"):
+                    out = torch.bmm(out, weight)
+            out = out.transpose(0, 1)
+            if shuffle_output:
+                out = out.transpose(1, 2)
+            out = out.contiguous().view(size[0], size[1], -1)
         return out
+
+    def extra_repr(self):
+        return 'in_feature={0}, out_feature={1}, ngroups={2}, bias={3}'.format(self.in_feature, self.out_feature, self.k, self.bias is not None)
 
 
 class MultiheadAttention(nn.Module):
@@ -207,8 +215,9 @@ class MultiheadAttention(nn.Module):
             if key_padding_mask is not None:
                 key_padding_mask = torch.cat(
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
-
-        attn_weights = torch.bmm(q, k.transpose(1, 2))
+        
+        with torch.autograd.profiler.record_function("mh:bmm1"):
+            attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
@@ -232,8 +241,9 @@ class MultiheadAttention(nn.Module):
             return attn_weights, v
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_probs = F.dropout(attn_weights_float, p=self.dropout, training=self.training)
-
-        attn = torch.bmm(attn_probs, v)
+        
+        with torch.autograd.profiler.record_function("mh:bmm2"):
+            attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if (self.onnx_trace and attn.size(1) == 1):
             # when ONNX tracing a single decoder step (sequence length == 1)

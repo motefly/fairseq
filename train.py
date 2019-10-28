@@ -76,26 +76,30 @@ def main(args, init_distributed=False):
     train_meter = StopwatchMeter()
     train_meter.start()
     valid_subsets = args.valid_subset.split(',')
-    while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
-        # train for one epoch
-        train(args, trainer, task, epoch_itr)
+    enable_benchmark = args.enable_benchmark
+    with torch.autograd.profiler.profile(enabled=enable_benchmark, use_cuda=True) as prof:
+        while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
+            # train for one epoch
+            train(args, trainer, task, epoch_itr)
 
-        if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
-            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
-        else:
-            valid_losses = [None]
+            if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
+                valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
+            else:
+                valid_losses = [None]
 
-        # only use first validation loss to update the learning rate
-        lr = trainer.lr_step(epoch_itr.epoch, valid_losses[0])
+            # only use first validation loss to update the learning rate
+            lr = trainer.lr_step(epoch_itr.epoch, valid_losses[0])
 
-        # save checkpoint
-        if epoch_itr.epoch % args.save_interval == 0:
-            checkpoint_utils.save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
+            # save checkpoint
+            if epoch_itr.epoch % args.save_interval == 0:
+                checkpoint_utils.save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
 
-        reload_dataset = ':' in getattr(args, 'data', '')
-        # sharded data: get train iterator for next epoch
-        epoch_itr = trainer.get_train_iterator(epoch_itr.epoch, load_dataset=reload_dataset)
-    train_meter.stop()
+            reload_dataset = ':' in getattr(args, 'data', '')
+            # sharded data: get train iterator for next epoch
+            epoch_itr = trainer.get_train_iterator(epoch_itr.epoch, load_dataset=reload_dataset)
+        train_meter.stop()
+    if enable_benchmark:
+        print(prof.key_averages().table(sort_by="cuda_time_total"))
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
 

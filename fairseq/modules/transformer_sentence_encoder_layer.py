@@ -78,30 +78,36 @@ class TransformerSentenceEncoderLayer(nn.Module):
         """
         residual = x
         # new added
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
-        x, attn = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
-            key_padding_mask=self_attn_padding_mask,
-            need_weights=False,
-            attn_mask=self_attn_mask,
-        )
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = residual + x
-        # change 
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
+        with torch.autograd.profiler.record_function("layernorm"):
+            x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
+        with torch.autograd.profiler.record_function("attention+dropout"):
+            x, attn = self.self_attn(
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+            )
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            x = residual + x
+        # change
+        with torch.autograd.profiler.record_function("layernorm"):
+            x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
         # x = self.self_attn_layer_norm(x)
 
         residual = x
-        x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
-        x = self.activation_fn(self.fc_pre(x, shuffle_output=True))
-        x = self.activation_fn(self.fc1(x))
-        x = F.dropout(x, p=self.activation_dropout, training=self.training)
-        x = self.fc2(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = residual + x
-        x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
+        with torch.autograd.profiler.record_function("layernorm"):
+            x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
+        with torch.autograd.profiler.record_function("ffn+act+dropout"):
+            x = self.activation_fn(self.fc_pre(x, shuffle_output=True))
+            x = self.activation_fn(self.fc1(x))
+            x = F.dropout(x, p=self.activation_dropout, training=self.training)
+            x = self.fc2(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            x = residual + x
+        with torch.autograd.profiler.record_function("layernorm"):
+            x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
         # x = self.final_layer_norm(x)
         
         return x, attn
