@@ -208,9 +208,11 @@ class MixelectraLMHead(nn.Module):
 
         if mlm_tokens is not None:
             x_mask = x[mlm_tokens, :]
+            # project back to size of vocabulary with bias
+            x_mask = F.linear(x_mask, self.weight) + self.bias
+        else:
+            x_mask = None
         x_unmask = x[bin_tokens, :]
-        # project back to size of vocabulary with bias
-        x_mask = F.linear(x_mask, self.weight) + self.bias
 
         x_unmask = self.unmask_out(x_unmask)
         # x_unmask = torch.sigmoid(x_unmask)
