@@ -66,7 +66,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         freq_weighted_replacement: bool = False,
         mask_whole_words: torch.Tensor = None,
     ):
-        assert 0.0 < mask_prob < 1.0
+        assert 0.0 <= mask_prob < 1.0
         # assert 0.0 <= random_token_prob <= 1.0
         assert 0.0 <= random_replace_prob <= 1.0
         # assert 0.0 <= leave_unmasked_prob <= 1.0
