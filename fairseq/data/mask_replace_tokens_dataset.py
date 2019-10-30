@@ -90,8 +90,8 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
             else:
                 weights = np.ones(len(self.vocab))
             weights[:self.vocab.nspecial] = 0
-            # remove replace to mask
-            weights[-1] = 0
+            # do not replace to mask_idx
+            weights[self.mask_idx] = 0
             self.weights = weights / weights.sum()
 
         self.epoch = 0
