@@ -77,7 +77,7 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
             args.save_dir, pattern=r'checkpoint_\d+_(\d+)\.pt',
         )
         for old_chk in checkpoints[args.keep_interval_updates:]:
-            if os.path.lexists(old_chk):
+            if os.path.lexists(old_chk) and eval(old_chk.split('_')[-1][:-3]) not in args.keep_updates_list:
                 os.remove(old_chk)
 
     if args.keep_last_epochs > 0:
