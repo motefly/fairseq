@@ -66,7 +66,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         freq_weighted_replacement: bool = False,
         mask_whole_words: torch.Tensor = None,
     ):
-        assert 0.0 < mask_prob < 1.0
+        assert 0.0 <= mask_prob < 1.0
         # assert 0.0 <= random_token_prob <= 1.0
         assert 0.0 <= random_replace_prob <= 1.0
         # assert 0.0 <= leave_unmasked_prob <= 1.0
@@ -90,6 +90,8 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
             else:
                 weights = np.ones(len(self.vocab))
             weights[:self.vocab.nspecial] = 0
+            # do not replace to mask_idx
+            weights[self.mask_idx] = 0
             self.weights = weights / weights.sum()
 
         self.epoch = 0

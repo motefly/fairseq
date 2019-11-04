@@ -48,13 +48,19 @@ class MixElectraLoss(FairseqCriterion):
                 mlm_tokens = masked_tokens & not_pad_tokens
                 bin_tokens = (~masked_tokens) & not_pad_tokens
 
-            mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
-            targets = model.get_targets(sample, [mask_logits])
+        mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
+        targets = model.get_targets(sample, [mask_logits])
+        unmask_targets = targets.eq(sample['net_input']['src_tokens'])[bin_tokens].float()
+            
+        loss2 = F.binary_cross_entropy_with_logits(
+            unmask_logits.float().view(-1),
+            unmask_targets.view(-1),
+            reduction='sum'
+        )
 
         if mlm_sample_size != 0:
             mask_targets = targets[mlm_tokens]
-            unmask_targets = targets.eq(sample['net_input']['src_tokens'])[bin_tokens].float()
-        with torch.autograd.profiler.record_function("loss"):
+
             loss1 = F.nll_loss(
                 F.log_softmax(
                     mask_logits.view(-1, mask_logits.size(-1)),
@@ -65,13 +71,12 @@ class MixElectraLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=self.padding_idx,
             )
-            loss2 = F.binary_cross_entropy_with_logits(
-                unmask_logits.float().view(-1),
-                unmask_targets.view(-1),
-                reduction='sum'
-            )
-            
             loss = loss1 + self.args.loss_lamda * loss2
+        else:
+            loss1 = torch.tensor(0.0)
+            loss = self.args.loss_lamda * loss2
+
+        mlm_sample_size = mlm_sample_size if mlm_sample_size!=0 else 1
         logging_output = {
             'loss': utils.item(loss2.data) if reduce else loss2.data,
             'nll_loss': utils.item(loss1.data) if reduce else loss1.data,
