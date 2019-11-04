@@ -59,9 +59,8 @@ class TransformerSentenceEncoderLayer(nn.Module):
         
         # layer norm associated with the self attention layer
         self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
-        self.fc_pre = GroupFC(self.embedding_dim, self.embedding_dim)
-        self.fc1 = GroupFC(self.embedding_dim, ffn_embedding_dim)
-        self.fc2 = GroupFC(ffn_embedding_dim, self.embedding_dim)
+        self.fc1 = nn.Linear(self.embedding_dim, ffn_embedding_dim)
+        self.fc2 = nn.Linear(ffn_embedding_dim, self.embedding_dim)
 
         # layer norm associated with the position wise feed-forward NN
         self.final_layer_norm = LayerNorm(self.embedding_dim, export=export)
@@ -100,7 +99,6 @@ class TransformerSentenceEncoderLayer(nn.Module):
         with torch.autograd.profiler.record_function("layernorm"):
             x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
         with torch.autograd.profiler.record_function("ffn+act+dropout"):
-            x = self.activation_fn(self.fc_pre(x, shuffle_output=True))
             x = self.activation_fn(self.fc1(x))
             x = F.dropout(x, p=self.activation_dropout, training=self.training)
             x = self.fc2(x)
