@@ -63,6 +63,7 @@ class MixElectraTask(FairseqTask):
         super().__init__(args)
         self.dictionary = dictionary
         self.seed = args.seed
+        self.mix_electra_helper = data_utils.mixElectraHelper()
 
         # add mask token
         self.mask_idx = dictionary.add_symbol('<mask>')
@@ -94,6 +95,9 @@ class MixElectraTask(FairseqTask):
         )
         if dataset is None:
             raise FileNotFoundError('Dataset not found: {} ({})'.format(split, split_path))
+
+        if split == 'train' and not self.mix_electra_helper.has_set():
+            self.mix_electra_helper.setup(len(dataset))
 
         # create continuous blocks of tokens
         dataset = TokenBlockDataset(
@@ -131,6 +135,11 @@ class MixElectraTask(FairseqTask):
                 ))
         else:
             mask_whole_words = None
+        # if split == 'train':
+        #     self.mix_electra_helper.setup(epoch, len(dataset))
+        #     mix_electra_helper = self.mix_electra_helper
+        # else:
+        #     mix_electra_helper = None
 
         src_dataset, tgt_dataset = MaskReplaceTokensDataset.apply_mask_replace(
             dataset,
@@ -144,6 +153,8 @@ class MixElectraTask(FairseqTask):
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,
             mask_whole_words=mask_whole_words,
+            mix_electra_helper=self.mix_electra_helper,
+            split_name=split,
         )
 
         with data_utils.numpy_seed(self.args.seed + epoch):

@@ -29,6 +29,8 @@ class MixElectraLoss(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+        # import time
+        # front = time.time()
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
 
@@ -59,6 +61,23 @@ class MixElectraLoss(FairseqCriterion):
 
         if mlm_sample_size != 0:
             mask_targets = targets[mlm_tokens]
+            if self.training:
+                sample_probs = torch.softmax(mask_logits, -1).view(-1, mask_logits.size(-1)).detach()
+                # start = time.time()
+                sampled_tokens = torch.multinomial(sample_probs, 1).view(-1).cpu().numpy()
+                # end = time.time()
+                mlm_tokens = mlm_tokens.nonzero().cpu().numpy()
+                sample_ids = sample['id'].cpu().numpy()
+                # if 2139 in sample_ids:
+                #     import pdb
+                #     pdb.set_trace()
+                last = 0
+                # for sid in range(mlm_tokens.shape[0]):
+                #     begin = last
+                #     last += sum(mlm_tokens[sid])
+                #     self.task.mix_electra_helper.update(sample_ids[sid], mlm_tokens[sid].nonzero()[0], sampled_tokens[begin:last])
+                self.task.mix_electra_helper.update2(sample_ids, mlm_tokens, sampled_tokens)
+                # print (start-front, end-start)
 
             loss1 = F.nll_loss(
                 F.log_softmax(

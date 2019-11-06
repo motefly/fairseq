@@ -237,3 +237,37 @@ def process_bpe_symbol(sentence: str, bpe_symbol: str):
     elif bpe_symbol is not None:
         sentence = (sentence + ' ').replace(bpe_symbol, '').rstrip()
     return sentence
+
+
+class mixElectraHelper(object):
+    def __init__(self):
+        super().__init__()
+        self.epoch_num = 0
+        self.lists = None
+        self.work = False
+
+    def setup(self, example_num=1801350):
+        self.lists = np.zeros((example_num,2), dtype=object)
+
+    def has_set(self):
+        return self.lists is not None
+
+    def can_work(self):
+        return self.work
+
+    def index(self, idx):
+        return self.lists[idx]
+
+    def update(self, idx, pos, replaces):
+        self.lists[idx] = [pos, replaces]
+
+    def update2(self, idxs, id_pos, replaces):
+        self.work = True
+        uniqe_ids = np.unique(id_pos[:, 0], return_counts=True)
+        replaces = np.split(replaces, np.cumsum(uniqe_ids[1])[:-1])
+        id_pos = np.split(id_pos[:, 1], np.cumsum(uniqe_ids[1])[:-1])
+        # if 2139 in idxs[uniqe_ids[0]]:
+        #     import pdb
+        #     pdb.set_trace()
+        self.lists[:,0][idxs[uniqe_ids[0]]] = id_pos
+        self.lists[:,1][idxs[uniqe_ids[0]]] = replaces

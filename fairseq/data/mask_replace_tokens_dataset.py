@@ -65,6 +65,8 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         # random_token_prob: float = 0.1,
         freq_weighted_replacement: bool = False,
         mask_whole_words: torch.Tensor = None,
+        mix_electra_helper: data_utils.mixElectraHelper = None,
+        split_name: object = 'train',
     ):
         assert 0.0 <= mask_prob < 1.0
         # assert 0.0 <= random_token_prob <= 1.0
@@ -80,9 +82,11 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         self.seed = seed
         self.mask_prob = mask_prob
         self.random_replace_prob = random_replace_prob
+        self.mix_electra_helper = mix_electra_helper
         # self.leave_unmasked_prob = leave_unmasked_prob
         # self.random_token_prob = random_token_prob
         self.mask_whole_words = mask_whole_words
+        self.split_name = split_name
 
         if random_replace_prob > 0.0:
             if freq_weighted_replacement:
@@ -138,8 +142,22 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
 
             # decide unmasking and random replacement
             # rand_or_unmask_prob = self.random_token_prob + self.leave_unmasked_prob
+            new_item = np.copy(item)
             if self.random_replace_prob > 0.0:
-                rand_mask = (mask == False) & (np.random.rand(sz) < self.random_replace_prob)
+                if self.mix_electra_helper is None or not self.mix_electra_helper.can_work() or self.split_name == 'valid':
+                    rand_mask = (mask == False) & (np.random.rand(sz) < self.random_replace_prob)
+                else:
+                    replace_idx, replace_target = self.mix_electra_helper.index(index)
+                    if not isinstance(replace_idx, int):
+                        if self.random_replace_prob - len(replace_idx)*1.0/sz >= 0.0:
+                            new_item[replace_idx] = replace_target
+                        else:
+                            shuffle_idx = np.random.permutation(len(replace_idx))[:int(self.random_replace_prob*sz)]
+                            print(index, replace_idx[shuffle_idx], len(shuffle_idx), replace_target[shuffle_idx], new_item)
+                            new_item[replace_idx[shuffle_idx]] = replace_target[shuffle_idx]
+                        rand_mask = (mask == False) & (np.random.rand(sz) < (self.random_replace_prob - len(replace_idx)*1.0/sz))
+                    else:
+                        rand_mask = (mask == False) & (np.random.rand(sz) < self.random_replace_prob)
                 unmask = None
             else:
                 unmask = rand_mask = None
@@ -150,10 +168,10 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
             if self.mask_whole_words is not None:
                 mask = np.repeat(mask, word_lens)
 
-            new_item = np.copy(item)
             new_item[mask] = self.mask_idx
             if rand_mask is not None:
                 num_rand = rand_mask.sum()
+
                 if num_rand > 0:
                     if self.mask_whole_words is not None:
                         rand_mask = np.repeat(rand_mask, word_lens)
