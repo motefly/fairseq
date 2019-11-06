@@ -153,7 +153,6 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
                             new_item[replace_idx] = replace_target
                         else:
                             shuffle_idx = np.random.permutation(len(replace_idx))[:int(self.random_replace_prob*sz)]
-                            print(index, replace_idx[shuffle_idx], len(shuffle_idx), replace_target[shuffle_idx], new_item)
                             new_item[replace_idx[shuffle_idx]] = replace_target[shuffle_idx]
                         rand_mask = (mask == False) & (np.random.rand(sz) < (self.random_replace_prob - len(replace_idx)*1.0/sz))
                     else:
