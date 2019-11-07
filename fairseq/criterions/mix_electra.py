@@ -50,13 +50,16 @@ class MixElectraLoss(FairseqCriterion):
         mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
         targets = model.get_targets(sample, [mask_logits])
         unmask_targets = targets.eq(sample['net_input']['src_tokens'])[bin_tokens].float()
-            
-        loss2 = F.binary_cross_entropy_with_logits(
-            unmask_logits.float().view(-1),
-            unmask_targets.view(-1),
-            reduction='sum'
-        )
-
+        
+        if self.args.random_replace_prob > 0.0:
+            loss2 = F.binary_cross_entropy_with_logits(
+                unmask_logits.float().view(-1),
+                unmask_targets.view(-1),
+                reduction='sum'
+            )
+        else:
+            loss2 = torch.tensor(0.0)
+        
         if mlm_sample_size != 0:
             mask_targets = targets[mlm_tokens]
 
