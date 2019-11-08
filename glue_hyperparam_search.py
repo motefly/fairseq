@@ -39,28 +39,28 @@ def params(*args):
     values = itertools.product(*args)
     return [{k: v for k, v in zip(keys, vs)} for vs in values]
 
-cola = (
-    task("CoLA", 8551, "mcc", "cross_entropy_classify_binary", "", 2, "CoLA"),
-    # params(["100 200 300 400 500 600"], ["5 6 7 8"], ["16 32"], ["0.00005 0.0006", "0.00007 0.00008", "0.00009 0.00010", "0.000011 0.00012"], ["0.01"])
-    params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
-) # 60s / epoch, 3h / search
+# cola = (
+#     task("CoLA", 8551, "mcc", "cross_entropy_classify_binary", "", 2, "CoLA"),
+#     # params(["100 200 300 400 500 600"], ["5 6 7 8"], ["16 32"], ["0.00005 0.0006", "0.00007 0.00008", "0.00009 0.00010", "0.000011 0.00012"], ["0.01"])
+#     params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
+# ) # 60s / epoch, 3h / search
 mrpc = (
     task("MRPC", 3668, "acc_f1", "cross_entropy_classify_binary", "--symmetric", 2, "MRPC"), # change original num_class 1 to 2
     # params(["100 200 300 400 500 600"], ["3 4 5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]) # original
     # params(["100 200 300", "400 500 600"], ["5 6 7 8 9 10"], ["16 32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]) # for roberta
-    params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
+    params(["100 200 300", "400 500 600"], ["10"], ["16 32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
 ) # 50s / epoch, 3h / search
 # sts = (
 #     task("STS-B", 5749, "glue_pair", "mean_squared_error", "--symmetric", 1, "STS-B"),
 #     params(["100 200 300 400 500 600"], ["3 4 5 8"], ["16 32"], ["0.00005 0.00003 0.00002"], ["0.01"])
 # ) # 50s / epoch, 4h / search
-rte = (
-    task("RTE", 2475, "accuracy", "cross_entropy_classify", "", 2, "RTE"),
-    # params(["100 200 300 400 500 600"], ["3 4 5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]), #original
-    # params(["100 200 300 400 500 600"], ["6 7 8 9 10"], ["16"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00", "0.01"]) # for roberta
-    params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
+# rte = (
+#     task("RTE", 2475, "accuracy", "cross_entropy_classify", "", 2, "RTE"),
+#     # params(["100 200 300 400 500 600"], ["3 4 5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]), #original
+#     # params(["100 200 300 400 500 600"], ["6 7 8 9 10"], ["16"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00", "0.01"]) # for roberta
+#     params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
 
-) # 60s / epoch, 3h / search
+# ) # 60s / epoch, 3h / search
 # mnli = (
 #     task("MNLI", 392702, "glue_pair", "cross_entropy_classify", "", 3, "MNLI"),
 #     params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
@@ -77,10 +77,10 @@ rte = (
 #     task("QQP", 363849, "glue_pair", "cross_entropy_classify_binary", "--symmetric", 1, "QQP"),
 #     params(["100", "200", "300"], ["3 4 5"], ["16", "24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
 # ) # 4000s / epoch, bs 32 oom
-# sst = (
-#     task("SST-2", 67349, "glue_single", "cross_entropy_classify", "", 2, "SST-2"),
-#     params(["100 200 300",  "400 500 600"], ["6 7 8", "5 9 10"], ["16", "32"], ["0.00001 0.00002", "0.00003 0.000004"], ["0.01"])
-# ) # 400s / epoch, 18h / search
+sst = (
+    task("SST-2", 67349, "glue_single", "cross_entropy_classify", "", 2, "SST-2"),
+    params(["100 200 300"], ["10"], ["16 32"], ["0.00001", "0.00002", "0.00003", "0.00004"], ["0.1"])
+) # 400s / epoch, 18h / search
 
 
 task_list = [mrpc, rte, cola]
@@ -154,7 +154,7 @@ python train.py $DATA_PATH/${PROBLEM}-bin \
        --criterion sentence_prediction \
        --num-classes $N_CLASSES \
        --dropout 0.1 --attention-dropout 0.1 \
-       --weight-decay $WEIGHT_DECAY --optimizer adam --adam-betas "(0.9, 0.999)" --adam-eps 1e-06 \
+       --weight-decay $WEIGHT_DECAY --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-06 \
        --clip-norm 0.0 \
        --lr-scheduler polynomial_decay --lr $LR --total-num-update $N_UPDATES --warmup-updates $WARMUP_UPDATES\
        --max-epoch $N_EPOCH --seed $SEED --save-dir $OUTPUT_PATH --no-progress-bar --log-interval 100 --no-epoch-checkpoints \
