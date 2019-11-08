@@ -83,7 +83,7 @@ sst = (
 ) # 400s / epoch, 18h / search
 
 
-task_list = [mrpc, rte, cola]
+task_list = [mrpc, sst]
 script_dir = os.path.join("submit/glue/finetune/{}/{}".format(bert_model_config["procedure_folder2"], bert_model_config["bert_model_checkpoint"]))
 
 env_vars = """
