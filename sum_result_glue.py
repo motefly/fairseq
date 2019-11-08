@@ -26,8 +26,8 @@ def readResult(path, keyword='best_'):
     files = os.listdir(path)
     s = []
     done_mark = "done training"
-    ok = False
     for File in files:
+        ok = False
         ans = 0
         with open(path+'/'+File+'/'+'train_log.txt', 'r') as log:
             for line in log.readlines():
@@ -45,13 +45,13 @@ def readResult(path, keyword='best_'):
                         continue
                 if done_mark in line:
                     ok = True
+            if not ok:
+                print(path, "not ok!")
         cols = File.split('-')[:-1]
         # for idx,col in enumerate(cols):
         #     summ[idx].append(col)
         cols.append(ans)
         summ.append(cols)
-        if not ok:
-            print(path, "not ok!")
     return pd.DataFrame(summ)
 ress = {}
 for p2 in args.p2s:
