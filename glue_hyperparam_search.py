@@ -22,7 +22,7 @@ project_folder = "electra" # "adaptive_bert"  # !! TO UPDATE
 
 bert_model_config = {
     "bert_model_arch": args.arch, #"transformer_v1_classifier_base" if args.v == 'v1' else "transformer_classifier_base",
-    "bert_model_checkpoint": "checkpoints/checkpoint_{}".format(args.c),
+    "bert_model_checkpoint": "checkpoint_{}".format(args.c),
     "procedure_folder1": args.p1,
     "procedure_folder2": args.p2,
 }  
@@ -30,7 +30,7 @@ bert_model_config["procedure_path"] = "{}/{}".format(bert_model_config["procedur
 
 
 
-def task(name, n_sentences, task, criterion, symmetric, n_classes, data_path):
+def task(name, n_sentences, metric, criterion, symmetric, n_classes, data_path):
     return locals()
 
 def params(*args):
@@ -40,52 +40,56 @@ def params(*args):
     return [{k: v for k, v in zip(keys, vs)} for vs in values]
 
 cola = (
-    task("CoLA", 8551, "glue_single", "cross_entropy_classify_binary", "", 1, "CoLA"),
-    params(["100 200 300 400 500 600"], ["5 6 7 8"], ["16 32"], ["0.00005 0.0006", "0.00007 0.00008", "0.00009 0.00010", "0.000011 0.00012"], ["0.01"])
+    task("CoLA", 8551, "mcc", "cross_entropy_classify_binary", "", 2, "CoLA"),
+    # params(["100 200 300 400 500 600"], ["5 6 7 8"], ["16 32"], ["0.00005 0.0006", "0.00007 0.00008", "0.00009 0.00010", "0.000011 0.00012"], ["0.01"])
+    params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004", "0.00005 0.00006"], ["0.01"])
 ) # 60s / epoch, 3h / search
 mrpc = (
-    task("MRPC", 3668, "glue_pair", "cross_entropy_classify_binary", "--symmetric", 2, "MRPC"), # change original num_class 1 to 2
+    task("MRPC", 3668, "acc_f1", "cross_entropy_classify_binary", "--symmetric", 2, "MRPC"), # change original num_class 1 to 2
     # params(["100 200 300 400 500 600"], ["3 4 5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]) # original
-    params(["100 200 300 400 500 600"], ["5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]) # for roberta
+    # params(["100 200 300", "400 500 600"], ["5 6 7 8 9 10"], ["16 32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]) # for roberta
+    params(["100 200 300", "400 500 600"], ["10"], ["16 32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.1"])
 ) # 50s / epoch, 3h / search
-sts = (
-    task("STS-B", 5749, "glue_pair", "mean_squared_error", "--symmetric", 1, "STS-B"),
-    params(["100 200 300 400 500 600"], ["3 4 5 8"], ["16 32"], ["0.00005 0.00003 0.00002"], ["0.01"])
-) # 50s / epoch, 4h / search
+# sts = (
+#     task("STS-B", 5749, "glue_pair", "mean_squared_error", "--symmetric", 1, "STS-B"),
+#     params(["100 200 300 400 500 600"], ["3 4 5 8"], ["16 32"], ["0.00005 0.00003 0.00002"], ["0.01"])
+# ) # 50s / epoch, 4h / search
 rte = (
-    task("RTE", 2475, "glue_pair", "cross_entropy_classify", "", 2, "RTE"),
+    task("RTE", 2475, "accuracy", "cross_entropy_classify", "", 2, "RTE"),
     # params(["100 200 300 400 500 600"], ["3 4 5 6 7 8 9 10"], ["16", "32"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00 0.01"]), #original
-    params(["100 200 300 400 500 600"], ["6 7 8 9 10"], ["16"], ["0.00003 0.00004 0.00005 0.00006"], ["0.00 0.01"]) # for roberta
+    # params(["100 200 300 400 500 600"], ["6 7 8 9 10"], ["16"], ["0.00003 0.00004 0.00005 0.00006", "0.00007 0.00008 0.00009 0.0001"], ["0.00", "0.01"]) # for roberta
+    params(["100 200 300"], ["10"], ["16", "32"], ["0.00003 0.00004 0.00007 0.00008", "0.00005 0.00006 0.00009 0.0001"], ["0.01"])
 
 ) # 60s / epoch, 3h / search
-mnli = (
-    task("MNLI", 392702, "glue_pair", "cross_entropy_classify", "", 3, "MNLI"),
-    params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
-) # 5000s / epoch, bs 32 oom
-mnlimm = (
-    task("MNLI-mm", 392702, "glue_pair", "cross_entropy_classify", "", 3, "MNLI-mm"),
-    params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
-) # 5000s / epoch, bs 32 oom
-qnli = (
-    task("QNLI", 108436, "glue_pair", "cross_entropy_classify", "", 2, "QNLI"),
-    params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
-) # 1600s / epoch, bs 32 oom
-qqp = (
-    task("QQP", 363849, "glue_pair", "cross_entropy_classify_binary", "--symmetric", 1, "QQP"),
-    params(["100", "200", "300"], ["3 4 5"], ["16", "24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
-) # 4000s / epoch, bs 32 oom
+# mnli = (
+#     task("MNLI", 392702, "glue_pair", "cross_entropy_classify", "", 3, "MNLI"),
+#     params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
+# ) # 5000s / epoch, bs 32 oom
+# mnlimm = (
+#     task("MNLI-mm", 392702, "glue_pair", "cross_entropy_classify", "", 3, "MNLI-mm"),
+#     params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
+# ) # 5000s / epoch, bs 32 oom
+# qnli = (
+#     task("QNLI", 108436, "glue_pair", "cross_entropy_classify", "", 2, "QNLI"),
+#     params(["100", "200", "300"], ["3 4 5"], ["16 24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
+# ) # 1600s / epoch, bs 32 oom
+# qqp = (
+#     task("QQP", 363849, "glue_pair", "cross_entropy_classify_binary", "--symmetric", 1, "QQP"),
+#     params(["100", "200", "300"], ["3 4 5"], ["16", "24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
+# ) # 4000s / epoch, bs 32 oom
 sst = (
-    task("SST-2", 67349, "glue_single", "cross_entropy_classify", "", 2, "SST-2"),
-    params(["100 200 300",  "400 500 600"], ["6 7 8", "5 9 10"], ["16", "32"], ["0.00001 0.00002", "0.00003 0.000004"], ["0.01"])
+    task("SST-2", 67349, "accuracy", "cross_entropy_classify", "", 2, "SST-2"),
+    # params(["100 200 300",  "400 500 600"], ["6 7 8", "5 9 10"], ["16", "32"], ["0.00001 0.00002", "0.00003 0.000004"], ["0.01"])
+    params(["100 200 300", "400 500 600"], ["10"], ["16 32"], ["0.00001 0.00002", "0.00003 0.000004"], ["0.1"])
 ) # 400s / epoch, 18h / search
 
 
-task_list = [mrpc, rte]
+task_list = [sst, mrpc]
 script_dir = os.path.join("submit/glue/finetune/{}/{}".format(bert_model_config["procedure_folder2"], bert_model_config["bert_model_checkpoint"]))
 
 env_vars = """
 PROBLEM={name}
-TASK={task}
+METRIC={metric}
 CHECKPOINT_FILE={bert_model_checkpoint}
 PROCEDURE_FOLDER={procedure_path}
 BERT_MODEL_PATH={procedure_path}/{bert_model_checkpoint}.pt
@@ -101,8 +105,8 @@ BATCH_SZ_LIST="{batch_sz_list}"
 LR_LIST="{lr_list}" 
 WEIGHT_DECAY_LIST="{weight_decay_list}" 
 
-CODE_HOME=/home/zhenhui/Projects/my-fairseq/{project_folder}
-DATA_PATH=/home/zhenhui/Projects/my-fairseq/data-ds/glue-32768
+CODE_HOME=/home/zhenhui/my-fairseq/{project_folder}
+DATA_PATH=/home/zhenhui/my-fairseq/data-ds/glue-32768-fast
 TENSORBOARD_LOG={procedure_path}/GLUE/{bert_model_checkpoint}
 """
 
@@ -151,13 +155,13 @@ python train.py $DATA_PATH/${PROBLEM}-bin \
        --criterion sentence_prediction \
        --num-classes $N_CLASSES \
        --dropout 0.1 --attention-dropout 0.1 \
-       --weight-decay $WEIGHT_DECAY --optimizer adam --adam-betas "(0.9, 0.999)" --adam-eps 1e-06 \
+       --weight-decay $WEIGHT_DECAY --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-06 \
        --clip-norm 0.0 \
        --lr-scheduler polynomial_decay --lr $LR --total-num-update $N_UPDATES --warmup-updates $WARMUP_UPDATES\
        --max-epoch $N_EPOCH --seed $SEED --save-dir $OUTPUT_PATH --no-progress-bar --log-interval 100 --no-epoch-checkpoints \
-       --find-unused-parameters --skip-invalid-size-inputs-valid-test --encoder-normalize-before \
+       --find-unused-parameters --skip-invalid-size-inputs-valid-test --encoder-normalize-before --truncate-sequence \
        --tensorboard-logdir $TENSORBOARD_LOG/${PROBLEM}/${N_EPOCH}-${BATCH_SZ}-${LR}-${WEIGHT_DECAY}-$SEED-0.006 \
-       --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric | tee -a $OUTPUT_PATH/train_log.txt
+       --best-checkpoint-metric $METRIC --maximize-best-checkpoint-metric | tee -a $OUTPUT_PATH/train_log.txt
 
 touch $OUTPUT_PATH/ok
 rm -rf $OUTPUT_PATH/checkpoint_best.pt
