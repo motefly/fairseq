@@ -25,6 +25,8 @@ project_folder = "electra" # "adaptive_bert"  # !! TO UPDATE
 def readResult(path, keyword='best_'):
     files = os.listdir(path)
     s = []
+    done_mark = "done training"
+    ok = False
     for File in files:
         ans = 0
         with open(path+'/'+File+'/'+'train_log.txt', 'r') as log:
@@ -41,11 +43,15 @@ def readResult(path, keyword='best_'):
                             ans = max(ans, eval(items[pos+1]))
                     except:
                         continue
+                if done_mark in line:
+                    ok = True
         cols = File.split('-')[:-1]
         # for idx,col in enumerate(cols):
         #     summ[idx].append(col)
         cols.append(ans)
         summ.append(cols)
+        if not ok:
+            print(path, "not ok!")
     return pd.DataFrame(summ)
 ress = {}
 for p2 in args.p2s:
@@ -70,6 +76,7 @@ for p2 in args.p2s:
             results = results.join(results.groupby([0,1,2,3])[5].mean(), on=[0,1,2,3], rsuffix='_mean')
             results = results.join(results.groupby([0,1,2,3])['5'].std(), on=[0,1,2,3], rsuffix='_std')
             results = results.sort_values(by='5_mean')
+            print(p2,task,c,results.shape,results.values[-1])
             result = results.values[-1][6]
             ans.append(result)
         anss.append(ans)
