@@ -62,7 +62,7 @@ class MixElectraLoss(FairseqCriterion):
         if mlm_sample_size != 0:
             mask_targets = targets[mlm_tokens]
             if self.training:
-                sample_probs = torch.softmax(mask_logits, -1).view(-1, mask_logits.size(-1)).detach()
+                sample_probs = torch.softmax(mask_logits, -1, dtype=torch.float32).view(-1, mask_logits.size(-1)).detach()
                 # start = time.time()
                 sampled_tokens = torch.multinomial(sample_probs, 1).view(-1).cpu().numpy()
                 # end = time.time()
