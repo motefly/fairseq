@@ -78,7 +78,7 @@ mrpc = (
 #     params(["100", "200", "300"], ["3 4 5"], ["16", "24"], ["0.00005", "0.00003", "0.00002"], ["0.01"])
 # ) # 4000s / epoch, bs 32 oom
 sst = (
-    task("SST-2", 67349, "glue_single", "cross_entropy_classify", "", 2, "SST-2"),
+    task("SST-2", 67349, "accuracy", "cross_entropy_classify", "", 2, "SST-2"),
     params(["100 200 300"], ["10"], ["16 32"], ["0.00001", "0.00002", "0.00003", "0.00004"], ["0.1"])
 ) # 400s / epoch, 18h / search
 
