@@ -46,7 +46,7 @@ def readResult(path, keyword='best_'):
                 if done_mark in line:
                     ok = True
             if not ok:
-                print(path, "not ok!")
+                print(path+'/'+File, "not ok!")
         cols = File.split('-')[:-1]
         # for idx,col in enumerate(cols):
         #     summ[idx].append(col)
