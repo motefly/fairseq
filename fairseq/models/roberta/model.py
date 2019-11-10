@@ -345,7 +345,7 @@ def roberta_large_architecture(args):
 
 
 @register_model_architecture('roberta', 'roberta_L3A12')
-def roberta_large_architecture(args):
+def roberta_L3A12_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 3)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
@@ -354,7 +354,7 @@ def roberta_large_architecture(args):
 
 
 @register_model_architecture('roberta', 'roberta_L6A8')
-def roberta_large_architecture(args):
+def roberta_L6A8_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
