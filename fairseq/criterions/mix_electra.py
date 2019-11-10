@@ -36,7 +36,6 @@ class MixElectraLoss(FairseqCriterion):
         not_pad_tokens = sample['target'].ne(self.padding_idx)
 
         mlm_sample_size = (masked_tokens & not_pad_tokens).int().sum().item()
-        bin_sample_size = ((~masked_tokens) & not_pad_tokens).int().sum().item()
 
         # (Rare case) When all tokens are masked, the model results in empty
         # tensor and gives CUDA error.
@@ -46,6 +45,8 @@ class MixElectraLoss(FairseqCriterion):
         else:
             mlm_tokens = masked_tokens & not_pad_tokens
             bin_tokens = (~masked_tokens) & not_pad_tokens
+
+        bin_sample_size = bin_tokens.int().sum().item()
 
         mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
         targets = model.get_targets(sample, [mask_logits])
@@ -57,6 +58,11 @@ class MixElectraLoss(FairseqCriterion):
                 unmask_targets.view(-1),
                 reduction='sum'
             )
+            tp = ((unmask_logits.float().view(-1) >= 0) & (unmask_targets == 1)).long().sum()
+            fp = ((unmask_logits.float().view(-1) >= 0) & (unmask_targets == 0)).long().sum()
+            fn = ((unmask_logits.float().view(-1) < 0) & (unmask_targets == 1)).long().sum()
+            tn = ((unmask_logits.float().view(-1) < 0) & (unmask_targets == 0)).long().sum()
+            assert (tp + fp + tn + fn) == unmask_targets.size(0), 'invalid size'
         else:
             loss2 = torch.tensor(0.0)
         
@@ -73,10 +79,10 @@ class MixElectraLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=self.padding_idx,
             )
-            loss = loss1 + self.args.loss_lamda * loss2
+            loss = loss1 + self.args.loss_lamda * loss2 * mlm_sample_size / bin_sample_size
         else:
             loss1 = torch.tensor(0.0)
-            loss = self.args.loss_lamda * loss2
+            loss = self.args.loss_lamda * loss2 / bin_sample_size
 
         mlm_sample_size = mlm_sample_size if mlm_sample_size!=0 else 1
         logging_output = {
@@ -93,6 +99,12 @@ class MixElectraLoss(FairseqCriterion):
         logging_output.update(
             bin_loss=loss2.item()
         )
+        if self.args.random_replace_prob > 0.0:
+            logging_output.update(tp = utils.item(tp.data) if reduce else tp.data)
+            logging_output.update(fp = utils.item(fp.data) if reduce else fp.data)
+            logging_output.update(fn = utils.item(fn.data) if reduce else fn.data)
+            logging_output.update(tn = utils.item(tn.data) if reduce else tn.data)
+
         return loss, mlm_sample_size, logging_output
 
     @staticmethod
@@ -112,6 +124,20 @@ class MixElectraLoss(FairseqCriterion):
             'sample_size': sample_size,
             'bin_sample_size': bin_sample_size,
         }
+
+        if 'tp' in logging_outputs[0]: 
+            tp_sum = sum(log.get('tp', 0) for log in logging_outputs)
+            fp_sum = sum(log.get('fp', 0) for log in logging_outputs)
+            fn_sum = sum(log.get('fn', 0) for log in logging_outputs)
+            tn_sum = sum(log.get('tn', 0) for log in logging_outputs)
+            assert tp_sum + fp_sum + fn_sum + tn_sum == bin_sample_size, 'invalid size when aggregating'
+            bin_acc = (tp_sum + tn_sum) / bin_sample_size
+            replace_acc = tn_sum / (tn_sum + fp_sum + 1e-5)
+            non_replace_acc = tp_sum / (tp_sum + fn_sum + 1e-5)
+            agg_output.update(bin_acc=bin_acc)
+            agg_output.update(replace_acc=replace_acc)
+            agg_output.update(non_replace_acc=non_replace_acc)
+        
         bin_loss = sum(log.get('bin_loss', 0) for log in logging_outputs) / len(logging_outputs)
         agg_output.update(bin_loss=bin_loss)
         mlm_loss = sum(log.get('mlm_loss', 0) for log in logging_outputs) / len(logging_outputs)
