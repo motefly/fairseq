@@ -363,15 +363,16 @@ def base_architecture(args):
 @register_model_architecture('mixelectra', 'mixelectra_base')
 def mixelectra_base_architecture(args):
     base_architecture(args)
-    
+
+
 @register_model_architecture('mixelectra', 'mixelectra_small')
 def mixelectra_small_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
-
     base_architecture(args)
+
 
 @register_model_architecture('mixelectra', 'mixelectra_large')
 def mixelectra_large_architecture(args):
@@ -379,4 +380,22 @@ def mixelectra_large_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
+    base_architecture(args)
+
+
+@register_model_architecture('mixelectra', 'mixelectra_L3A12')
+def mixelectra_L3A12_architecture(args):
+    args.encoder_layers = getattr(args, 'encoder_layers', 3)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
+    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
+    base_architecture(args)
+
+
+@register_model_architecture('mixelectra', 'mixelectra_L6A8')
+def mixelectra_L6A8_architecture(args):
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
+    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
     base_architecture(args)
