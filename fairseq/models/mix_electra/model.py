@@ -119,6 +119,40 @@ class MixelectraModel(FairseqLanguageModel):
             self.args.pooler_dropout,
         )
 
+    def replace_preprocess(self, origin_input, vocab_size, mask_idx, padding_idx):
+        # sample by the similarity of embedding
+        if self.args.random_replace_prob == 0.0:
+            return origin_input
+        origin_shape = origin_input.size()
+        origin_input = origin_input.view(-1)
+        size = origin_input.size(0)
+
+        replace_idx = torch.LongTensor(int(size*self.args.random_replace_prob)).random_(0, size).cuda()
+        original_tokens = origin_input[replace_idx]
+
+        # import pdb
+        # pdb.set_trace()
+
+        masked_pos = original_tokens.eq(mask_idx).nonzero().view(-1)
+        pad_pos = original_tokens.eq(padding_idx).nonzero().view(-1)
+
+        sample_tokens = torch.LongTensor(self.args.word_num).random_(2, vocab_size).cuda()
+
+        original_emb = self.decoder.sentence_encoder.embed_tokens(original_tokens)
+        sample_emb = self.decoder.sentence_encoder.embed_tokens(sample_tokens)
+
+        similarity = torch.softmax(torch.mm(original_emb, sample_emb.t()), -1, dtype=torch.float32)
+
+        sampled_tokens = torch.multinomial(similarity, 1).view(-1)
+        origin_input[replace_idx] = sampled_tokens
+        if masked_pos.size(0) != 0:
+            origin_input[masked_pos] = mask_idx
+        if pad_pos.size(0) != 0:
+            origin_input[pad_pos] = padding_idx
+
+        return origin_input.view(origin_shape)
+
+
     @property
     def supported_targets(self):
         return {'self'}

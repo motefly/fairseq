@@ -58,6 +58,9 @@ class MixElectraTask(FairseqTask):
                             help='mask whole words; you may also want to set --bpe')
         parser.add_argument('--loss-lamda', default=50.0, type=float,
                             help='lamda trade-off between generator loss and discriminator loss')
+        parser.add_argument('--word-num', default=10000, type=int,
+                            help='sampled number when replace')
+                            
 
     def __init__(self, args, dictionary):
         super().__init__(args)
@@ -139,7 +142,7 @@ class MixElectraTask(FairseqTask):
             mask_idx=self.mask_idx,
             seed=self.args.seed,
             mask_prob=self.args.mask_prob,
-            random_replace_prob=self.args.random_replace_prob,
+            random_replace_prob=0.0,#self.args.random_replace_prob,
             # leave_unmasked_prob=self.args.leave_unmasked_prob,
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,

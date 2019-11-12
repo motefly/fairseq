@@ -31,8 +31,10 @@ class MixElectraLoss(FairseqCriterion):
         """
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
-
-        masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # 
+        
+        sample['net_input']['src_tokens'] = model.replace_preprocess(sample['net_input']['src_tokens'], len(self.task.dictionary)-1, mask_idx, self.padding_idx).detach()
+        
+        masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) 
         not_pad_tokens = sample['target'].ne(self.padding_idx)
 
         mlm_sample_size = (masked_tokens & not_pad_tokens).int().sum().item()
@@ -137,6 +139,8 @@ class MixElectraLoss(FairseqCriterion):
             agg_output.update(bin_acc=bin_acc)
             agg_output.update(replace_acc=replace_acc)
             agg_output.update(non_replace_acc=non_replace_acc)
+            agg_output.update(replace_samples=(tn_sum + fp_sum))
+            agg_output.update(replace_rate=(tn_sum + fp_sum)/bin_sample_size)
         
         bin_loss = sum(log.get('bin_loss', 0) for log in logging_outputs) / len(logging_outputs)
         agg_output.update(bin_loss=bin_loss)
