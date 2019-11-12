@@ -99,7 +99,7 @@ class MixElectraLoss(FairseqCriterion):
             mlm_loss=loss1.item()
         )
         logging_output.update(
-            bin_loss=loss2.item()
+            bin_loss=loss2.item()*mlm_sample_size / bin_sample_size
         )
         if self.args.random_replace_prob > 0.0:
             logging_output.update(tp = utils.item(tp.data) if reduce else tp.data)
