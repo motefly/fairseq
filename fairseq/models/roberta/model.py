@@ -66,6 +66,8 @@ class RobertaModel(FairseqLanguageModel):
                             help='activation function to use for pooler layer')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
+        parser.add_argument('--embedding-normalize', action='store_true',
+                            help='add layernorm after the embedding layer')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
@@ -257,7 +259,8 @@ class RobertaEncoder(FairseqDecoder):
             activation_dropout=args.activation_dropout,
             max_seq_len=args.max_positions,
             num_segments=0,
-            encoder_normalize_before=True,
+            encoder_normalize_before=args.encoder_normalize_before,
+            embedding_normalize=args.embedding_normalize,
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
@@ -319,6 +322,9 @@ def base_architecture(args):
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.activation_dropout = getattr(args, 'activation_dropout', 0.0)
     args.pooler_dropout = getattr(args, 'pooler_dropout', 0.0)
+
+    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
+    args.embedding_normalize = getattr(args, 'embedding_normalize', False)
 
 
 @register_model_architecture('roberta', 'roberta_base')
