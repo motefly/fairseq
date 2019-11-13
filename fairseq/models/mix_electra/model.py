@@ -119,32 +119,43 @@ class MixelectraModel(FairseqLanguageModel):
             self.args.pooler_dropout,
         )
 
-    def replace_preprocess(self, origin_input, vocab_size, mask_idx, padding_idx):
+    def replace_preprocess(self, origin_input, original_tokens, 
+                            vocab_size, mask_idx, padding_idx, replace_idx, 
+                            replace_pos, masked_pos, pad_pos):
         # sample by the similarity of embedding
         if self.args.random_replace_prob == 0.0:
             return origin_input
         origin_shape = origin_input.size()
         origin_input = origin_input.view(-1)
-        size = origin_input.size(0)
+        # size = origin_input.size(0)
 
-        replace_idx = torch.LongTensor(int(size*self.args.random_replace_prob)).random_(0, size).cuda()
-        original_tokens = origin_input[replace_idx]
+        # replace_pos = torch.randint(0, size, (int(size*self.args.random_replace_prob),), device='cuda') #torch.LongTensor(int(size*self.args.random_replace_prob)).random_(0, size).cuda()
+        # import pdb
+        # pdb.set_trace()
+        # masked_pos = origin_input.eq(mask_idx).nonzero().view(-1)
+        # pad_pos = origin_input.eq(padding_idx).nonzero().view(-1)
+
+        # sample_tokens = torch.LongTensor(self.args.word_num).random_(2, vocab_size).cuda()
+        # sample_tokens = torch.arange(vocab_size+1).cuda()
+
+        original_emb = self.decoder.sentence_encoder.embed_tokens(original_tokens)
+        sample_emb = self.decoder.sentence_encoder.embed_tokens.weight
+        # sample_emb = self.decoder.sentence_encoder.embed_tokens(sample_tokens)
+
+        sim_logits = torch.mm(original_emb, sample_emb.t())
+        # self_idx = torch.cat([torch.arange(replace_pos.size(0)).cuda().unsqueeze(1), replace_pos.unsqueeze(1)], -1)
+        sim_logits[torch.arange(replace_pos.size(0)),original_tokens] = float('-inf')
+        sim_logits[:,[0,padding_idx,mask_idx,replace_idx]] = float('-inf')
+        # import pdb
+        # pdb.set_trace()
+        similarity = torch.softmax(sim_logits/self.args.replace_temperature, -1, dtype=torch.float32)
+
+        sampled_tokens = torch.multinomial(similarity, 1).view(-1)
 
         # import pdb
         # pdb.set_trace()
-
-        masked_pos = original_tokens.eq(mask_idx).nonzero().view(-1)
-        pad_pos = original_tokens.eq(padding_idx).nonzero().view(-1)
-
-        sample_tokens = torch.LongTensor(self.args.word_num).random_(2, vocab_size).cuda()
-
-        original_emb = self.decoder.sentence_encoder.embed_tokens(original_tokens)
-        sample_emb = self.decoder.sentence_encoder.embed_tokens(sample_tokens)
-
-        similarity = torch.softmax(torch.mm(original_emb, sample_emb.t()), -1, dtype=torch.float32)
-
-        sampled_tokens = torch.multinomial(similarity, 1).view(-1)
-        origin_input[replace_idx] = sampled_tokens
+        
+        origin_input[replace_pos] = sampled_tokens
         if masked_pos.size(0) != 0:
             origin_input[masked_pos] = mask_idx
         if pad_pos.size(0) != 0:

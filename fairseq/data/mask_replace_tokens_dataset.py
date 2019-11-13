@@ -57,6 +57,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         vocab: Dictionary,
         pad_idx: int,
         mask_idx: int,
+        replace_idx: int,
         return_masked_tokens: bool = False,
         seed: int = 1,
         mask_prob: float = 0.15,
@@ -76,6 +77,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         self.vocab = vocab
         self.pad_idx = pad_idx
         self.mask_idx = mask_idx
+        self.replace_idx = replace_idx
         self.return_masked_tokens = return_masked_tokens
         self.seed = seed
         self.mask_prob = mask_prob
@@ -84,15 +86,15 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         # self.random_token_prob = random_token_prob
         self.mask_whole_words = mask_whole_words
 
-        if random_replace_prob > 0.0:
-            if freq_weighted_replacement:
-                weights = np.array(self.vocab.count)
-            else:
-                weights = np.ones(len(self.vocab))
-            weights[:self.vocab.nspecial] = 0
-            # do not replace to mask_idx
-            weights[self.mask_idx] = 0
-            self.weights = weights / weights.sum()
+        # if random_replace_prob > 0.0:
+        #     if freq_weighted_replacement:
+        #         weights = np.array(self.vocab.count)
+        #     else:
+        #         weights = np.ones(len(self.vocab))
+        #     weights[:self.vocab.nspecial] = 0
+        #     # do not replace to mask_idx
+        #     weights[self.mask_idx] = 0
+        #     self.weights = weights / weights.sum()
 
         self.epoch = 0
 
@@ -159,10 +161,11 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
                         rand_mask = np.repeat(rand_mask, word_lens)
                         num_rand = rand_mask.sum()
 
-                    new_item[rand_mask] = np.random.choice(
-                        len(self.vocab),
-                        num_rand,
-                        p=self.weights,
-                    )
+                    new_item[rand_mask] = self.replace_idx
+                    # new_item[rand_mask] = np.random.choice(
+                    #     len(self.vocab),
+                    #     num_rand,
+                    #     p=self.weights,
+                    # )
 
             return torch.from_numpy(new_item)

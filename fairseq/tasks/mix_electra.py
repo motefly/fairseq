@@ -60,6 +60,8 @@ class MixElectraTask(FairseqTask):
                             help='lamda trade-off between generator loss and discriminator loss')
         parser.add_argument('--word-num', default=10000, type=int,
                             help='sampled number when replace')
+        parser.add_argument('--replace-temperature', default=0.01, type=float,
+                            help='soften the logits for softmax embedding similarity computing')
                             
 
     def __init__(self, args, dictionary):
@@ -69,6 +71,7 @@ class MixElectraTask(FairseqTask):
 
         # add mask token
         self.mask_idx = dictionary.add_symbol('<mask>')
+        self.replace_idx = dictionary.add_symbol('<replace>')
 
     @classmethod
     def setup_task(cls, args, **kwargs):
@@ -140,9 +143,10 @@ class MixElectraTask(FairseqTask):
             self.source_dictionary,
             pad_idx=self.source_dictionary.pad(),
             mask_idx=self.mask_idx,
+            replace_idx=self.replace_idx,
             seed=self.args.seed,
             mask_prob=self.args.mask_prob,
-            random_replace_prob=0.0,#self.args.random_replace_prob,
+            random_replace_prob=self.args.random_replace_prob,
             # leave_unmasked_prob=self.args.leave_unmasked_prob,
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,
