@@ -66,6 +66,8 @@ class SentencePredictionTask(FairseqTask):
         """
         dictionary = Dictionary.load(filename)
         dictionary.add_symbol('<mask>')
+        # because mix_electra_replace_emb add it
+        dictionary.add_symbol('<replace>')
         return dictionary
 
     @classmethod
