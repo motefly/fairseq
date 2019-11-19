@@ -62,6 +62,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         seed: int = 1,
         mask_prob: float = 0.15,
         random_replace_prob: float = 0.15,
+        random_replace: bool = False,
         # leave_unmasked_prob: float = 0.1,
         # random_token_prob: float = 0.1,
         freq_weighted_replacement: bool = False,
@@ -82,19 +83,20 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
         self.seed = seed
         self.mask_prob = mask_prob
         self.random_replace_prob = random_replace_prob
+        self.random_replace = random_replace
         # self.leave_unmasked_prob = leave_unmasked_prob
         # self.random_token_prob = random_token_prob
         self.mask_whole_words = mask_whole_words
 
-        # if random_replace_prob > 0.0:
-        #     if freq_weighted_replacement:
-        #         weights = np.array(self.vocab.count)
-        #     else:
-        #         weights = np.ones(len(self.vocab))
-        #     weights[:self.vocab.nspecial] = 0
-        #     # do not replace to mask_idx
-        #     weights[self.mask_idx] = 0
-        #     self.weights = weights / weights.sum()
+        if random_replace_prob > 0.0 and self.random_replace:
+            if freq_weighted_replacement:
+                weights = np.array(self.vocab.count)
+            else:
+                weights = np.ones(len(self.vocab))
+            weights[:self.vocab.nspecial] = 0
+            # do not replace to mask_idx
+            weights[self.mask_idx] = 0
+            self.weights = weights / weights.sum()
 
         self.epoch = 0
 
@@ -160,12 +162,13 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
                     if self.mask_whole_words is not None:
                         rand_mask = np.repeat(rand_mask, word_lens)
                         num_rand = rand_mask.sum()
-
-                    new_item[rand_mask] = self.replace_idx
-                    # new_item[rand_mask] = np.random.choice(
-                    #     len(self.vocab),
-                    #     num_rand,
-                    #     p=self.weights,
-                    # )
+                    if self.random_replace:
+                        new_item[rand_mask] = np.random.choice(
+                            len(self.vocab),
+                            num_rand,
+                            p=self.weights,
+                        )
+                    else:
+                        new_item[rand_mask] = self.replace_idx
 
             return torch.from_numpy(new_item)

@@ -62,6 +62,8 @@ class MixElectraTask(FairseqTask):
                             help='sampled number when replace')
         parser.add_argument('--replace-temperature', default=0.01, type=float,
                             help='soften the logits for softmax embedding similarity computing')
+        parser.add_argument('--random-replace', default=False, action='store_true',
+                            help='add it to replace the tokens to random ones')
                             
 
     def __init__(self, args, dictionary):
@@ -147,6 +149,7 @@ class MixElectraTask(FairseqTask):
             seed=self.args.seed,
             mask_prob=self.args.mask_prob,
             random_replace_prob=self.args.random_replace_prob,
+            random_replace=self.args.random_replace,
             # leave_unmasked_prob=self.args.leave_unmasked_prob,
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,

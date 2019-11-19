@@ -31,18 +31,18 @@ class MixElectraLoss(FairseqCriterion):
         """
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
-        replace_idx = self.task.dictionary.index('<replace>')
-        replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
         masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) 
         not_pad_tokens = sample['net_input']['src_tokens'].ne(self.padding_idx)
-        
-        original_tokens = sample['target'][replaced_tokens].view(-1)
-        sample['net_input']['src_tokens'] = model.replace_preprocess(sample['net_input']['src_tokens'], original_tokens,
-                                                                    len(self.task.dictionary), mask_idx, 
-                                                                    self.padding_idx, replace_idx, 
-                                                                    replaced_tokens.view(-1).nonzero().view(-1), 
-                                                                    masked_tokens.view(-1).nonzero().view(-1),
-                                                                    (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
+        if not self.args.random_replace:
+            replace_idx = self.task.dictionary.index('<replace>')
+            replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
+            original_tokens = sample['target'][replaced_tokens].view(-1)
+            sample['net_input']['src_tokens'] = model.replace_preprocess(sample['net_input']['src_tokens'], original_tokens,
+                                                                        len(self.task.dictionary), mask_idx, 
+                                                                        self.padding_idx, replace_idx, 
+                                                                        replaced_tokens.view(-1).nonzero().view(-1), 
+                                                                        masked_tokens.view(-1).nonzero().view(-1),
+                                                                        (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
         
         mlm_sample_size = (masked_tokens & not_pad_tokens).int().sum().item()
 
