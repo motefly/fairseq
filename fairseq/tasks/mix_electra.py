@@ -13,7 +13,7 @@ from fairseq.data import (
     Dictionary,
     encoders,
     IdDataset,
-    MaskReplaceTokensDataset,
+    EditTokensDataset,
     NestedDictionaryDataset,
     NumelDataset,
     NumSamplesDataset,
@@ -64,6 +64,8 @@ class MixElectraTask(FairseqTask):
                             help='soften the logits for softmax embedding similarity computing')
         parser.add_argument('--random-replace', default=False, action='store_true',
                             help='add it to replace the tokens to random ones')
+        parser.add_argument('--delete-prob', default=0.02, type=float,
+                            help='probability of delete')
                             
 
     def __init__(self, args, dictionary):
@@ -140,7 +142,7 @@ class MixElectraTask(FairseqTask):
         else:
             mask_whole_words = None
 
-        src_dataset, tgt_dataset = MaskReplaceTokensDataset.apply_mask_replace(
+        src_dataset, tgt_dataset, ops_dataset = EditTokensDataset.apply_edit(
             dataset,
             self.source_dictionary,
             pad_idx=self.source_dictionary.pad(),
@@ -148,12 +150,12 @@ class MixElectraTask(FairseqTask):
             replace_idx=self.replace_idx,
             seed=self.args.seed,
             mask_prob=self.args.mask_prob,
+            delete_prob=self.args.delete_prob,
             random_replace_prob=self.args.random_replace_prob,
             random_replace=self.args.random_replace,
             # leave_unmasked_prob=self.args.leave_unmasked_prob,
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,
-            mask_whole_words=mask_whole_words,
         )
 
         with data_utils.numpy_seed(self.args.seed + epoch):
@@ -174,6 +176,11 @@ class MixElectraTask(FairseqTask):
                     'target': PadDataset(
                         tgt_dataset,
                         pad_idx=self.source_dictionary.pad(),
+                        left_pad=False,
+                    ),
+                    'operation': PadDataset(
+                        ops_dataset,
+                        pad_idx=0,
                         left_pad=False,
                     ),
                     'nsentences': NumSamplesDataset(),

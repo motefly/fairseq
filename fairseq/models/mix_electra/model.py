@@ -244,7 +244,7 @@ class MixelectraLMHead(nn.Module):
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight = weight
         self.bias = nn.Parameter(torch.zeros(output_dim))
-        self.unmask_out = nn.Linear(embed_dim, 1)
+        self.unmask_out = nn.Linear(embed_dim, 4)
 
     def forward(self, features, mlm_tokens=None, bin_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
