@@ -125,7 +125,7 @@ class MixelectraModel(FairseqLanguageModel):
                             vocab_size, mask_idx, padding_idx, replace_idx, 
                             replace_pos, masked_pos, pad_pos):
         # sample by the similarity of embedding
-        if self.args.random_replace_prob == 0.0:
+        if self.args.random_replace_prob == 0.0 or original_tokens.size(0) == 0:
             return origin_input
         origin_shape = origin_input.size()
         origin_input = origin_input.view(-1)
