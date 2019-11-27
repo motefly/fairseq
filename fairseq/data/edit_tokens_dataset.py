@@ -211,13 +211,6 @@ class EditTokensDataset(BaseWrapperDataset):
             else:
                 replace = None
 
-            if self.swap_prob > 0.0:
-                swap = np.full(sz, False)
-                swap[mask_replace_pos[num_mask + num_replace:]] = True
-                swap = (swap & (operation==0)) | (operation == 1)
-            else:
-                swap = None
-
             # mask:5
             new_item[mask] = self.mask_idx
             operation[mask] = 5
@@ -237,7 +230,7 @@ class EditTokensDataset(BaseWrapperDataset):
             # print(self.return_type, sum(new_item==self.replace_idx), sum(operation==4))
 
             # swap:4
-            swap_pos = np.unique(swap)
+            swap_pos = mask_replace_pos[num_mask + num_replace:]
             idx = 0
             while idx+1 < len(swap_pos):
                 temp = new_item[swap_pos[idx]]
