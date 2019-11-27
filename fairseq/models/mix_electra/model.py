@@ -312,7 +312,7 @@ class MixelectraEncoder(FairseqDecoder):
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
-        multi_class_num = 5 - (self.args.random_replace_prob==0) - (self.args.delete_prob==0) - (self.args.swap_prob==0)
+        multi_class_num = 5 - (self.args.random_replace_prob==0) - 2*(self.args.delete_prob==0) - (self.args.swap_prob==0)
         self.lm_head = MixelectraLMHead(
             embed_dim=args.encoder_embed_dim,
             output_dim=len(dictionary),
