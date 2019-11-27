@@ -64,6 +64,7 @@ class EditTokensDataset(BaseWrapperDataset):
         seed: int = 1,
         mask_prob: float = 0.15,
         delete_prob: float = 0.02,
+        swap_prob: float = 0.01,
         random_replace_prob: float = 0.15,
         random_replace: bool = False,
         # leave_unmasked_prob: float = 0.1,
@@ -85,6 +86,7 @@ class EditTokensDataset(BaseWrapperDataset):
         self.seed = seed
         self.mask_prob = mask_prob
         self.delete_prob = delete_prob
+        self.swap_prob = swap_prob
         self.random_replace_prob = random_replace_prob
         self.random_replace = random_replace
         self.return_type = return_type
@@ -189,20 +191,36 @@ class EditTokensDataset(BaseWrapperDataset):
             else:
                 num_replace = 0
             
-            mask_replace_pos = np.random.choice(sz, num_mask + num_replace, replace=False)
+            if self.swap_prob > 0.0:
+                swap_prob = self.swap_prob / (1 - 2 * delete_prob + delete_prob * delete_prob) - delete_prob * delete_prob
+                num_swap = int(
+                    # add a random number for probabilistic rounding
+                    swap_prob * len(item) + np.random.rand()
+                ) * 2
+            else:
+                num_swap = 0
+            
+            mask_replace_pos = np.random.choice(sz, num_mask + num_replace + num_swap, replace=False)
             mask[mask_replace_pos[:num_mask]] = True
             mask = (mask & (operation==0))
 
             if self.random_replace_prob > 0.0:
                 replace = np.full(sz, False)
-                replace[mask_replace_pos[num_mask:]] = True
+                replace[mask_replace_pos[num_mask : num_mask + num_replace]] = True
                 replace = (replace & (operation==0)) | (operation == 3)
             else:
                 replace = None
 
+            if self.swap_prob > 0.0:
+                swap = np.full(sz, False)
+                swap[mask_replace_pos[num_mask + num_replace:]] = True
+                swap = (swap & (operation==0)) | (operation == 3)
+            else:
+                swap = None
+
             # mask:4
             new_item[mask] = self.mask_idx
-            operation[mask] = 4
+            operation[mask] = 5
             if replace is not None:
                 num_replace = replace.sum()
                 if num_replace > 0:
@@ -217,6 +235,17 @@ class EditTokensDataset(BaseWrapperDataset):
                     operation[replace] = 3 # replace:3
             # if sum(new_item==self.replace_idx)!=sum(operation==4):
             # print(self.return_type, sum(new_item==self.replace_idx), sum(operation==4))
+
+            # swap:5
+            swap_pos = mask_replace_pos[num_mask + num_replace:]
+            idx = 0
+            while idx+1 < len(swap_pos):
+                temp = new_item[swap_pos[idx]]
+                new_item[swap_pos[idx]] = new_item[swap_pos[idx+1]]
+                new_item[swap_pos[idx+1]] = temp
+                idx += 2
+            operation[swap_pos[:idx+2]] = 4
+
             if self.return_type == "source":
                 return torch.from_numpy(new_item)
             else:

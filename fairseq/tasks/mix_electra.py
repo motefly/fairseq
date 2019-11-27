@@ -66,6 +66,8 @@ class MixElectraTask(FairseqTask):
                             help='add it to replace the tokens to random ones')
         parser.add_argument('--delete-prob', default=0.02, type=float,
                             help='probability of delete')
+        parser.add_argument('--swap-prob', default=0.01, type=float,
+                            help='probability of delete')
                             
 
     def __init__(self, args, dictionary):
@@ -151,6 +153,7 @@ class MixElectraTask(FairseqTask):
             seed=self.args.seed,
             mask_prob=self.args.mask_prob,
             delete_prob=self.args.delete_prob,
+            swap_prob=self.args.swap_prob,
             random_replace_prob=self.args.random_replace_prob,
             random_replace=self.args.random_replace,
             # leave_unmasked_prob=self.args.leave_unmasked_prob,

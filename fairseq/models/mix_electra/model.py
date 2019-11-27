@@ -148,8 +148,6 @@ class MixelectraModel(FairseqLanguageModel):
         # self_idx = torch.cat([torch.arange(replace_pos.size(0)).cuda().unsqueeze(1), replace_pos.unsqueeze(1)], -1)
         sim_logits[torch.arange(replace_pos.size(0)),original_tokens] = float('-inf')
         sim_logits[:,[0,padding_idx,mask_idx,replace_idx]] = float('-inf')
-        # import pdb
-        # pdb.set_trace()
         similarity = torch.softmax(sim_logits/self.args.replace_temperature, -1, dtype=torch.float32)
 
         sampled_tokens = torch.multinomial(similarity, 1).view(-1)
@@ -234,7 +232,7 @@ class MixelectraModel(FairseqLanguageModel):
 class MixelectraLMHead(nn.Module):
     """Head for masked language modeling."""
 
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
+    def __init__(self, embed_dim, output_dim, activation_fn, multi_class_num, weight=None):
         super().__init__()
         self.dense = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
@@ -244,7 +242,7 @@ class MixelectraLMHead(nn.Module):
             weight = nn.Linear(embed_dim, output_dim, bias=False).weight
         self.weight = weight
         self.bias = nn.Parameter(torch.zeros(output_dim))
-        self.unmask_out = nn.Linear(embed_dim, 4)
+        self.unmask_out = nn.Linear(embed_dim, multi_class_num) # to-do check if there are 5 classes when some prob=0
 
     def forward(self, features, mlm_tokens=None, bin_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -314,10 +312,12 @@ class MixelectraEncoder(FairseqDecoder):
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
+        multi_class_num = 5 - (self.args.random_replace_prob==0) - (self.args.delete_prob==0) - (self.args.swap_prob==0)
         self.lm_head = MixelectraLMHead(
             embed_dim=args.encoder_embed_dim,
             output_dim=len(dictionary),
             activation_fn=args.activation_fn,
+            multi_class_num=multi_class_num,
             weight=self.sentence_encoder.embed_tokens.weight,
         )
 

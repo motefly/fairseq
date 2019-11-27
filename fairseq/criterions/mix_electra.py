@@ -32,7 +32,7 @@ class MixElectraLoss(FairseqCriterion):
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
         mlm_tokens = (sample['operation']>=3)
-        unmask_tokens = (sample['operation']!=4)
+        unmask_tokens = (sample['operation']!=5) # to-do: optimize the operation define
         not_pad_tokens = sample['net_input']['src_tokens'].ne(self.padding_idx)
 
         if not self.args.random_replace:
@@ -47,7 +47,7 @@ class MixElectraLoss(FairseqCriterion):
                                                                         masked_tokens.view(-1).nonzero().view(-1),
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
         
-        mlm_sample_size = (mlm_tokens & not_pad_tokens).int().sum().item()
+        mlm_sample_size = (mlm_tokens & not_pad_tokens).int().sum().item() 
 
         # (Rare case) When all tokens are masked, the model results in empty
         # tensor and gives CUDA error.
