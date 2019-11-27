@@ -129,7 +129,7 @@ class EditTokensDataset(BaseWrapperDataset):
             operation = np.zeros_like(new_item, dtype=np.int8)
             # mask_prob, replace_prob, add_prob, delete_prob, make add_prob = delte_prob;
             if delete_num > 0 and len(new_item) > 2:
-                # delete:1
+                # delete:2
                 delete_pos = np.sort(np.random.choice(len(new_item)-2, delete_num, replace=False))+1 # cannot delete the 1st and last token
                 item_segments = [new_item[:delete_pos[0]]]
                 op_segments = [operation[:delete_pos[0]]]
@@ -143,13 +143,13 @@ class EditTokensDataset(BaseWrapperDataset):
                         item_segments.append(new_item[pos:ed])
                         op_segments.append(operation[pos:ed])
                         continue
-                    op_segments[-1][-1] = 1
+                    op_segments[-1][-1] = 2
                     item_segments.append(new_item[pos+1:ed])
                     op_segments.append(operation[pos+1:ed])
                 new_item = np.concatenate(item_segments, axis=0)
                 operation = np.concatenate(op_segments, axis=0)
                 # print("step-1",operation)
-            # add:2
+            # add:3
             if delete_num > 0 and len(new_item) > 2:
                 add_pos = np.sort(np.random.choice(len(new_item)-2, delete_num, replace=False))+1 # cannot add after the last token
                 item_segments = [new_item[:add_pos[0]]]
@@ -158,10 +158,10 @@ class EditTokensDataset(BaseWrapperDataset):
                 for idx,pos in enumerate(add_pos):
                     item_segments.append(add_rand_tokens[idx:idx+1])
                     if operation[pos-1] == 0:
-                        op_segments.append(np.array([2])) # set operation
+                        op_segments.append(np.array([3])) # set operation
                     else:
                         op_segments[-1][-1] = 0
-                        op_segments.append(np.array([3])) # detele and then add -> replace:3
+                        op_segments.append(np.array([1])) # detele and then add -> replace:3
                     if idx != len(add_pos)-1:
                         ed = add_pos[idx+1]
                     else:
@@ -207,18 +207,18 @@ class EditTokensDataset(BaseWrapperDataset):
             if self.random_replace_prob > 0.0:
                 replace = np.full(sz, False)
                 replace[mask_replace_pos[num_mask : num_mask + num_replace]] = True
-                replace = (replace & (operation==0)) | (operation == 3)
+                replace = (replace & (operation==0)) | (operation == 1)
             else:
                 replace = None
 
             if self.swap_prob > 0.0:
                 swap = np.full(sz, False)
                 swap[mask_replace_pos[num_mask + num_replace:]] = True
-                swap = (swap & (operation==0)) | (operation == 3)
+                swap = (swap & (operation==0)) | (operation == 1)
             else:
                 swap = None
 
-            # mask:4
+            # mask:5
             new_item[mask] = self.mask_idx
             operation[mask] = 5
             if replace is not None:
@@ -232,11 +232,11 @@ class EditTokensDataset(BaseWrapperDataset):
                         )
                     else:
                         new_item[replace] = self.replace_idx
-                    operation[replace] = 3 # replace:3
+                    operation[replace] = 1 # replace:1
             # if sum(new_item==self.replace_idx)!=sum(operation==4):
             # print(self.return_type, sum(new_item==self.replace_idx), sum(operation==4))
 
-            # swap:5
+            # swap:4
             swap_pos = mask_replace_pos[num_mask + num_replace:]
             idx = 0
             while idx+1 < len(swap_pos):
