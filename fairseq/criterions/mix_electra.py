@@ -31,7 +31,9 @@ class MixElectraLoss(FairseqCriterion):
         """
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
-        mlm_tokens = (sample['operation']==5) | (sample['operation']==1)
+        mlm_tokens = (sample['operation']==5)
+        if self.args.predict_replace:
+            mlm_tokens = mlm_tokens | (sample['operation']==1)
         unmask_tokens = (sample['operation']!=5) # to-do: optimize the operation define
         not_pad_tokens = sample['net_input']['src_tokens'].ne(self.padding_idx)
 

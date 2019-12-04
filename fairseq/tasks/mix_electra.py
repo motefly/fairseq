@@ -68,6 +68,8 @@ class MixElectraTask(FairseqTask):
                             help='probability of delete')
         parser.add_argument('--swap-prob', default=0.01, type=float,
                             help='probability of delete')
+        parser.add_argument('--predict-replace', default=False, action='store_true',
+                            help='add it to predict the original tokens on replace position')
                             
 
     def __init__(self, args, dictionary):
