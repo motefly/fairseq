@@ -111,7 +111,7 @@ class Electra(FairseqLanguageModel):
         if self.generator is not None:
             # x-shape: (batch, src_len, vocab)
             gen_x, _ = self.generator(src_tokens, features_only, return_all_hiddens, masked_tokens, **kwargs)
-            sample_probs = torch.softmax(gen_x, -1).view(-1, gen_x.size(-1)).detach()
+            sample_probs = torch.softmax(gen_x, -1, dtype=torch.float32).view(-1, gen_x.size(-1)).detach()
             # sampled_tokens-shape: (batch*src_len, 1)
             sampled_tokens = torch.multinomial(sample_probs, 1).view(-1)
             # if self.args.debug:
