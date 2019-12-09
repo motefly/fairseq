@@ -89,10 +89,10 @@ class MixElectraLoss(FairseqCriterion):
                 reduction='sum',
                 ignore_index=self.padding_idx,
             )
-            loss = loss1 + self.args.loss_lamda * loss2
+            loss = loss1 + self.args.loss_lamda * loss2 * mlm_sample_size / bin_sample_size
         else:
             loss1 = torch.tensor(0.0)
-            loss = self.args.loss_lamda * loss2
+            loss = self.args.loss_lamda * loss2 / bin_sample_size
 
         mlm_sample_size = mlm_sample_size if mlm_sample_size!=0 else 1
         logging_output = {
