@@ -262,6 +262,8 @@ class mixElectraHelper(object):
         self.lists[idx] = [pos, replaces]
 
     def update2(self, idxs, id_pos, replaces):
+        id_pos = id_pos.astype(np.uint16)
+        replaces = replaces.astype(np.uint16)
         self.work = True
         uniqe_ids = np.unique(id_pos[:, 0], return_counts=True)
         replaces = np.split(replaces, np.cumsum(uniqe_ids[1])[:-1])
