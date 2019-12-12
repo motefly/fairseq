@@ -463,7 +463,7 @@ def Electra_base_architecture(args):
 
 
 @register_model_architecture('electra', 'electra_small')
-def Electra_large_architecture(args):
+def Electra_small_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
@@ -472,6 +472,15 @@ def Electra_large_architecture(args):
 
     base_architecture(args)
 
+@register_model_architecture('electra', 'electra_large')
+def Electra_small_architecture(args):
+    args.encoder_layers = getattr(args, 'encoder_layers', 24)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
+    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
+    args.generator_size_divider = getattr(args, 'generator_size_divider', 4)
+
+    base_architecture(args)
 
 # @register_model_architecture('Electra', 'xlm')
 # def xlm_architecture(args):
