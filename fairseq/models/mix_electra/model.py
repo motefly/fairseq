@@ -219,7 +219,7 @@ class MixelectraLMHead(nn.Module):
         # if sample_tokens is not None:
         #     x_sample = x[sample_tokens, :]
         #     # project back to size of vocabulary with bias
-        x_sample = F.linear(x.detach(), self.weight) + self.bias
+        x_sample = F.linear(x.detach(), self.weight.detach()) + self.bias
 
         x_unmask = self.unmask_out(x_unmask)
         # x_unmask = torch.sigmoid(x_unmask)

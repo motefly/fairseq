@@ -157,7 +157,7 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
                     self.mix_electra_helper = None
             if self.mix_electra_helper is not None:
                 replace_target = self.mix_electra_helper[index] #.index(index)
-                new_item = replace_target[:len(new_item)]
+                new_item = replace_target[:len(new_item)].astype(new_item.dtype)
             rand_mask = None
 
             if self.mask_whole_words is not None:
@@ -178,4 +178,4 @@ class MaskReplaceTokensDataset(BaseWrapperDataset):
                         p=self.weights,
                     )
 
-            return torch.from_numpy(new_item)
+            return torch.from_numpy(new_item).long()
