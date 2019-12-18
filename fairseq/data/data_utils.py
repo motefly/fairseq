@@ -275,7 +275,7 @@ class mixElectraHelper(object):
             to_reduce_samples_list[idx] = to_reduce_tensor.cpu().numpy()
             gc.collect()
         if self.args.device_id == 0:
-            np.save(self.cached_sample_path, np.concatenate(to_reduce_samples_list, axis=0).astype(np.uint16))
+            np.save(self.cached_sample_path, np.concatenate(to_reduce_samples_list, axis=0))
         torch.distributed.all_reduce(torch.zeros(1).cuda())
         self.cur_samples = np.zeros((self.dataset_size, self.max_length), dtype=np.int32)
         gc.collect()
