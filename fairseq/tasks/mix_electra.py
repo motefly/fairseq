@@ -63,7 +63,7 @@ class MixElectraTask(FairseqTask):
         super().__init__(args)
         self.dictionary = dictionary
         self.seed = args.seed
-        self.mix_electra_helper = data_utils.mixElectraHelper()
+        self.mix_electra_helper = data_utils.mixElectraHelper(args)
 
         # add mask token
         self.mask_idx = dictionary.add_symbol('<mask>')
@@ -96,9 +96,6 @@ class MixElectraTask(FairseqTask):
         if dataset is None:
             raise FileNotFoundError('Dataset not found: {} ({})'.format(split, split_path))
 
-        if split == 'train' and not self.mix_electra_helper.has_set():
-            self.mix_electra_helper.setup(len(dataset))
-
         # create continuous blocks of tokens
         dataset = TokenBlockDataset(
             dataset,
@@ -109,6 +106,9 @@ class MixElectraTask(FairseqTask):
             break_mode=self.args.sample_break_mode,
         )
         print('| loaded {} batches from: {}'.format(len(dataset), split_path))
+        
+        if split == 'train':
+            self.mix_electra_helper.setup(len(dataset), self.args.tokens_per_sample)
 
         # prepend beginning-of-sentence token (<s>, equiv. to [CLS] in BERT)
         dataset = PrependTokenDataset(dataset, self.source_dictionary.bos())
@@ -153,7 +153,7 @@ class MixElectraTask(FairseqTask):
             # random_token_prob=self.args.random_token_prob,
             freq_weighted_replacement=self.args.freq_weighted_replacement,
             mask_whole_words=mask_whole_words,
-            mix_electra_helper=self.mix_electra_helper,
+            cached_sample_path=os.path.join(self.args.save_dir, 'cached_samples.npy'), #''.join(self.mix_electra_helper.cached_sample_path),
             split_name=split,
         )
 

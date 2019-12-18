@@ -14,6 +14,7 @@ import sys
 import types
 
 import numpy as np
+import torch
 
 
 def infer_language_pair(path):
@@ -238,38 +239,42 @@ def process_bpe_symbol(sentence: str, bpe_symbol: str):
         sentence = (sentence + ' ').replace(bpe_symbol, '').rstrip()
     return sentence
 
+import gc
 
 class mixElectraHelper(object):
-    def __init__(self):
+    def __init__(self, args):
         super().__init__()
-        self.epoch_num = 0
-        self.lists = None
-        self.work = False
+        self.args = args
+        os.makedirs(args.save_dir, exist_ok=True)
+        self.cached_sample_path = os.path.join(args.save_dir, 'cached_samples.npy')
 
-    def setup(self, example_num=1801350):
-        self.lists = np.zeros((example_num,2), dtype=object)
 
-    def has_set(self):
-        return self.lists is not None
+    def setup(self, dataset_size, max_length):
+        self.dataset_size = dataset_size
+        self.max_length = max_length
+        self.cur_samples = np.zeros((self.dataset_size, self.max_length), dtype=np.int32)
 
-    def can_work(self):
-        return self.work
+    # def can_work(self):
+    #     return self.last_samples is not None
 
-    def index(self, idx):
-        return self.lists[idx]
+    # def index(self, idx):
+    #     if self.can_work():
+    #         return True, self.last_samples[idx]
+    #     else:
+    #         return False, 'Not Ready'
 
-    def update(self, idx, pos, replaces):
-        self.lists[idx] = [pos, replaces]
+    def update(self, idxs, batch_sampled):
+        self.cur_samples[idxs,:batch_sampled.shape[1]] += batch_sampled
 
-    def update2(self, idxs, id_pos, replaces):
-        id_pos = id_pos.astype(np.uint16)
-        replaces = replaces.astype(np.uint16)
-        self.work = True
-        uniqe_ids = np.unique(id_pos[:, 0], return_counts=True)
-        replaces = np.split(replaces, np.cumsum(uniqe_ids[1])[:-1])
-        id_pos = np.split(id_pos[:, 1], np.cumsum(uniqe_ids[1])[:-1])
-        # if 2139 in idxs[uniqe_ids[0]]:
-        #     import pdb
-        #     pdb.set_trace()
-        self.lists[:,0][idxs[uniqe_ids[0]]] = id_pos
-        self.lists[:,1][idxs[uniqe_ids[0]]] = replaces
+    def sync_merge(self):
+        to_reduce_samples_list = np.array_split(self.cur_samples, 10, axis=0)
+        for idx, to_reduce_samples in enumerate(to_reduce_samples_list):
+            to_reduce_tensor = torch.cuda.IntTensor(to_reduce_samples)
+            # print('HighLight', to_reduce_tensor.numel())
+            torch.distributed.all_reduce(to_reduce_tensor)
+            to_reduce_samples_list[idx] = to_reduce_tensor.cpu().numpy()
+            gc.collect()
+        if self.args.device_id == 0:
+            np.save(self.cached_sample_path, np.concatenate(to_reduce_samples_list, axis=0).astype(np.uint16))
+        self.cur_samples = np.zeros((self.dataset_size, self.max_length), dtype=np.int32)
+        gc.collect()

@@ -79,6 +79,9 @@ def main(args, init_distributed=False):
     while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
         # train for one epoch
         train(args, trainer, task, epoch_itr)
+        # test
+        if args.task == 'mix_electra':
+            task.mix_electra_helper.sync_merge()
 
         if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
             valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)

@@ -45,38 +45,43 @@ class MixElectraLoss(FairseqCriterion):
         if mlm_sample_size == 0:
             mlm_tokens = None
             bin_tokens = not_pad_tokens
+            # sample_tokens = None
         else:
             mlm_tokens = masked_tokens & not_pad_tokens
             bin_tokens = (~masked_tokens) & not_pad_tokens
+            # sample_tokens = (sample['target'] != sample['net_input']['src_tokens'])
 
-        mask_logits, unmask_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0]
+        mask_logits, unmask_logits, sample_logits = model(**sample['net_input'], mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)[0] #, sample_tokens=sample_tokens)[0]
         targets = model.get_targets(sample, [mask_logits])
         unmask_targets = targets.eq(sample['net_input']['src_tokens'])[bin_tokens].float()
-            
-        loss2 = F.binary_cross_entropy_with_logits(
-            unmask_logits.float().view(-1),
-            unmask_targets.view(-1),
-            reduction='sum'
-        )
+        replace_sample_size = (unmask_targets == 0).int().sum().item()
+
+        if replace_sample_size != 0:    
+            loss2 = F.binary_cross_entropy_with_logits(
+                unmask_logits.float().view(-1),
+                unmask_targets.view(-1),
+                reduction='sum'
+            )
+        else:
+            loss2 = torch.tensor(0.0)
 
         if mlm_sample_size != 0:
             mask_targets = targets[mlm_tokens]
             if self.training:
-                sample_probs = torch.softmax(mask_logits, -1, dtype=torch.float32).view(-1, mask_logits.size(-1)).detach()
+                sample_probs = torch.softmax(sample_logits, -1, dtype=torch.float32).view(-1, sample_logits.size(-1)).detach()
                 # start = time.time()
-                sampled_tokens = torch.multinomial(sample_probs, 1).view(-1).cpu().numpy()
-                # end = time.time()
-                mlm_tokens = mlm_tokens.nonzero().cpu().numpy()
                 sample_ids = sample['id'].cpu().numpy()
+                sampled_tokens = torch.multinomial(sample_probs, 1).view(sample_ids.shape[0], -1).cpu().numpy()
+                # end = time.time()
                 # if 2139 in sample_ids:
-                #     import pdb
-                #     pdb.set_trace()
-                last = 0
+                # import pdb
+                # pdb.set_trace()
+                # last = 0
                 # for sid in range(mlm_tokens.shape[0]):
                 #     begin = last
                 #     last += sum(mlm_tokens[sid])
                 #     self.task.mix_electra_helper.update(sample_ids[sid], mlm_tokens[sid].nonzero()[0], sampled_tokens[begin:last])
-                self.task.mix_electra_helper.update2(sample_ids, mlm_tokens, sampled_tokens)
+                self.task.mix_electra_helper.update(sample_ids, sampled_tokens)
                 # print (start-front, end-start)
 
             loss1 = F.nll_loss(
@@ -100,8 +105,9 @@ class MixElectraLoss(FairseqCriterion):
             'nll_loss': utils.item(loss1.data) if reduce else loss1.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
-            'sample_size': mlm_sample_size,
+            'mlm_sample_size': mlm_sample_size,
             'bin_sample_size': bin_sample_size,
+            'replace_sample_size': replace_sample_size,
         }
         logging_output.update(
             mlm_loss=loss1.item()
@@ -117,16 +123,19 @@ class MixElectraLoss(FairseqCriterion):
         loss = sum(log.get('loss', 0) for log in logging_outputs)
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
         nsentences = sum(log.get('nsentences', 0) for log in logging_outputs)
-        sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
+        mlm_sample_size = sum(log.get('mlm_sample_size', 0) for log in logging_outputs)
         bin_sample_size = sum(log.get('bin_sample_size', 0) for log in logging_outputs)
+        replace_sample_size = sum(log.get('replace_sample_size', 0) for log in logging_outputs)
 
         agg_output = {
             'loss': loss / bin_sample_size / math.log(2),
-            'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2) if ntokens > 0 else 0.,
+            'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / mlm_sample_size / math.log(2) if ntokens > 0 else 0.,
             'ntokens': ntokens,
             'nsentences': nsentences,
-            'sample_size': sample_size,
+            'sample_size': mlm_sample_size,
             'bin_sample_size': bin_sample_size,
+            'replace_rate': replace_sample_size/(mlm_sample_size+bin_sample_size),
+            'mask_rate': mlm_sample_size/(mlm_sample_size+bin_sample_size),
         }
         bin_loss = sum(log.get('bin_loss', 0) for log in logging_outputs) / len(logging_outputs)
         agg_output.update(bin_loss=bin_loss)

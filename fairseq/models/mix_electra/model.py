@@ -201,7 +201,7 @@ class MixelectraLMHead(nn.Module):
         self.bias = nn.Parameter(torch.zeros(output_dim))
         self.unmask_out = nn.Linear(embed_dim, 1)
 
-    def forward(self, features, mlm_tokens=None, bin_tokens=None, **kwargs):
+    def forward(self, features, mlm_tokens=None, bin_tokens=None, sample_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
         # saves both memory and computation
         x = self.dense(features)
@@ -216,10 +216,15 @@ class MixelectraLMHead(nn.Module):
             x_mask = None
         x_unmask = x[bin_tokens, :]
 
+        # if sample_tokens is not None:
+        #     x_sample = x[sample_tokens, :]
+        #     # project back to size of vocabulary with bias
+        x_sample = F.linear(x, self.weight) + self.bias
+
         x_unmask = self.unmask_out(x_unmask)
         # x_unmask = torch.sigmoid(x_unmask)
         
-        return x_mask, x_unmask
+        return x_mask, x_unmask, x_sample.detach()
 
 
 class MixelectraClassificationHead(nn.Module):
@@ -276,7 +281,7 @@ class MixelectraEncoder(FairseqDecoder):
             weight=self.sentence_encoder.embed_tokens.weight,
         )
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, mlm_tokens=None, bin_tokens=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, mlm_tokens=None, bin_tokens=None, sample_tokens=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -294,7 +299,7 @@ class MixelectraEncoder(FairseqDecoder):
         """
         x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
-            x = self.output_layer(x, mlm_tokens=mlm_tokens, bin_tokens=bin_tokens)
+            x = self.output_layer(x, mlm_tokens=mlm_tokens, bin_tokens=bin_tokens, sample_tokens=sample_tokens)
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -305,8 +310,8 @@ class MixelectraEncoder(FairseqDecoder):
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
-    def output_layer(self, features, mlm_tokens=None, bin_tokens=None, **unused):
-        return self.lm_head(features, mlm_tokens, bin_tokens)
+    def output_layer(self, features, mlm_tokens=None, bin_tokens=None, sample_tokens=None, **unused):
+        return self.lm_head(features, mlm_tokens, bin_tokens, sample_tokens)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
