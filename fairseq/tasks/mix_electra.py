@@ -64,6 +64,8 @@ class MixElectraTask(FairseqTask):
                             help='soften the logits for softmax embedding similarity computing')
         parser.add_argument('--random-replace', default=False, action='store_true',
                             help='add it to replace the tokens to random ones')
+        parser.add_argument('--self-replace', default=False, action='store_true',
+                            help='add it to replace the tokens by self inference')
         parser.add_argument('--delete-prob', default=0.02, type=float,
                             help='probability of delete')
         parser.add_argument('--swap-prob', default=0.01, type=float,

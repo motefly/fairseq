@@ -31,14 +31,25 @@ class MixElectraLoss(FairseqCriterion):
         """
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
+        replace_idx = self.task.dictionary.index('<replace>')
         mlm_tokens = (sample['operation']==5)
         if self.args.predict_replace:
             mlm_tokens = mlm_tokens | (sample['operation']==1)
         unmask_tokens = (sample['operation']!=5) # to-do: optimize the operation define
         not_pad_tokens = sample['net_input']['src_tokens'].ne(self.padding_idx)
 
-        if not self.args.random_replace:
-            replace_idx = self.task.dictionary.index('<replace>')
+        if self.args.self_replace:
+            with torch.no_grad():
+                replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
+                gen_samples = sample['target']
+                gen_samples[replaced_tokens] = mask_idx
+
+                mlm_logits, _ = model(gen_samples, mlm_tokens=replaced_tokens, bin_tokens=None)[0]
+                sample_probs = torch.softmax(mlm_logits, -1, dtype=torch.float32).view(-1, mlm_logits.size(-1)).detach()
+                sample_res = torch.multinomial(sample_probs, 1).view(-1)
+                sample['net_input']['src_tokens'][replaced_tokens] = sample_res
+
+        elif not self.args.random_replace:
             replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
             masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx)
             original_tokens = sample['target'][replaced_tokens].view(-1)
@@ -48,7 +59,7 @@ class MixElectraLoss(FairseqCriterion):
                                                                         replaced_tokens.view(-1).nonzero().view(-1), 
                                                                         masked_tokens.view(-1).nonzero().view(-1),
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
-        
+
         mlm_sample_size = (mlm_tokens & not_pad_tokens).int().sum().item() 
 
         # (Rare case) When all tokens are masked, the model results in empty
