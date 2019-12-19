@@ -124,7 +124,7 @@ class MixElectraLoss(FairseqCriterion):
             logging_output.update(
                 unmask_ncorrect=(unmask_preds == unmask_targets).sum().item()
             )
-        if mlm_sample_size != 0:
+        if mlm_sample_size > 1:
             mlm_preds = mlm_logits.max(dim=1)[1]
             logging_output.update(
                 mlm_ncorrect=(mlm_preds == mlm_targets).sum().item()
