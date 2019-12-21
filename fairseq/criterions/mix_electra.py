@@ -41,13 +41,14 @@ class MixElectraLoss(FairseqCriterion):
         if self.args.self_replace:
             with torch.no_grad():
                 replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
-                gen_samples = sample['target']
-                gen_samples[replaced_tokens] = mask_idx
+                if replaced_tokens.int().sum() > 0:
+                    gen_samples = sample['target']
+                    gen_samples[replaced_tokens] = mask_idx
 
-                mlm_logits, _ = model(gen_samples, mlm_tokens=replaced_tokens, bin_tokens=None)[0]
-                sample_probs = torch.softmax(mlm_logits, -1, dtype=torch.float32).view(-1, mlm_logits.size(-1)).detach()
-                sample_res = torch.multinomial(sample_probs, 1).view(-1)
-                sample['net_input']['src_tokens'][replaced_tokens] = sample_res
+                    mlm_logits, _ = model(gen_samples, mlm_tokens=replaced_tokens, bin_tokens=None)[0]
+                    sample_probs = torch.softmax(mlm_logits, -1, dtype=torch.float32).view(-1, mlm_logits.size(-1)).detach()
+                    sample_res = torch.multinomial(sample_probs, 1).view(-1)
+                    sample['net_input']['src_tokens'][replaced_tokens] = sample_res
 
         elif not self.args.random_replace:
             replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
