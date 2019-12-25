@@ -5,16 +5,16 @@
 
 import torch
 import torch.nn.functional as F
+
 from fairseq import utils
+from fairseq.iterative_refinement_generator import DecoderOut
 from fairseq.models import register_model, register_model_architecture
 from fairseq.models.transformer import (
     Embedding,
     TransformerDecoder,
-    TransformerDecoderLayer,
     TransformerEncoder,
     TransformerModel,
 )
-from fairseq.modules import MultiheadAttention
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 
@@ -35,45 +35,11 @@ def _argmax(x, dim):
     return (x == x.max(dim, keepdim=True)[0]).type_as(x)
 
 
-def _dynamic_programming(tokens, scores):
-    N, B, T = tokens.size()
-    cum_scores = scores[:, :, 0].clone()  # N x B
-    cum_choice = tokens.new_zeros(B, T)
-
-    # forward
-    for t in range(T - 1):
-        score, choice = cum_scores.max(0)
-        cum_choice[:, t] = choice
-        cum_scores[0] = score + scores[0, :, t + 1]
-        cum_scores[1:] = cum_scores[:-1] + scores[1:, :, t + 1]
-
-    # back-tracking
-    end_score, end_choice = cum_scores.max(0)
-    cum_choice[:, T - 1] = end_choice
-    for t in range(T - 2, -1, -1):
-        is_start = (cum_choice[:, t + 1] == 0).type_as(cum_choice)
-        cum_choice[:, t] = (cum_choice[:, t + 1] - 1) * ~is_start + cum_choice[
-            :, t
-        ] * is_start
-
-    # finalize the prediction
-    tokens = tokens.gather(0, cum_choice.unsqueeze(0)).squeeze(0)
-    scores = scores.gather(0, cum_choice.unsqueeze(0)).squeeze(0)
-    return scores, tokens
-
-
-def _beam_search(tokens, scores, W=None):
-    N, B, T = tokens.size()
-
-    if (W is None) or (W > N):
-        W = N
-
-
 def _uniform_assignment(src_lens, trg_lens):
     max_trg_len = trg_lens.max()
     steps = (src_lens.float() - 1) / (trg_lens.float() - 1)  # step-size
     # max_trg_len
-    index_t = torch.arange(max_trg_len, device=trg_lens.device).float()
+    index_t = utils.new_arange(trg_lens, max_trg_len).float()
     index_t = steps[:, None] * index_t[None, :]  # batch_size X max_trg_len
     index_t = torch.round(index_t).long().detach()
     return index_t
@@ -81,8 +47,8 @@ def _uniform_assignment(src_lens, trg_lens):
 
 @register_model("nonautoregressive_transformer")
 class NATransformerModel(TransformerModel):
-    def __init__(self, encoder, decoder):
-        super().__init__(encoder, decoder)
+    def __init__(self, args, encoder, decoder):
+        super().__init__(args, encoder, decoder)
         self.tgt_dict = decoder.dictionary
         self.bos = decoder.dictionary.bos()
         self.eos = decoder.dictionary.eos()
@@ -107,16 +73,6 @@ class NATransformerModel(TransformerModel):
                             help="stop the gradients back-propagated from the length predictor")
         parser.add_argument("--length-loss-factor", type=float,
                             help="weights on the length prediction loss")
-
-        # n-gram predictor
-        parser.add_argument(
-            "--ngram-predictor",
-            nargs="?",
-            const=4,
-            default=1,
-            type=int,
-            help="adding an additional n-gram predictor.",
-        )
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
@@ -146,21 +102,25 @@ class NATransformerModel(TransformerModel):
         )
 
         return {
-            "word_ins_out": word_ins_out,
-            "word_ins_tgt": word_ins_tgt,
-            "word_ins_mask": word_ins_mask,
-            "length_out": length_out,
-            "length_tgt": length_tgt,
-            "length_w": self.decoder.length_loss_factor,
+            "word_ins": {
+                "out": word_ins_out, "tgt": word_ins_tgt,
+                "mask": word_ins_mask, "ls": self.args.label_smoothing,
+                "nll_loss": True
+            },
+            "length": {
+                "out": length_out, "tgt": length_tgt,
+                "factor": self.decoder.length_loss_factor
+            }
         }
-
+            
     def forward_encoder(self, encoder_inputs):
         return self.encoder(*encoder_inputs)
 
     def forward_decoder(self, decoder_out, encoder_out, decoding_format=None, **kwargs):
-        step = decoder_out["step"]
-        output_tokens = decoder_out["output_tokens"]
-        output_scores = decoder_out["output_scores"]
+        step = decoder_out.step
+        output_tokens = decoder_out.output_tokens
+        output_scores = decoder_out.output_scores
+        history = decoder_out.history
 
         # execute the decoder
         output_masks = output_tokens.ne(self.pad)
@@ -171,15 +131,22 @@ class NATransformerModel(TransformerModel):
             step=step,
         )
         output_tokens.masked_scatter_(output_masks, _tokens[output_masks])
-        output_scores.masked_scatter_(output_masks, _scores[output_masks])
+        output_scores.masked_scatter_(output_masks, _scores[output_masks])    
+        if history is not None:
+            history.append(output_tokens.clone())
 
-        return {"output_tokens": output_tokens, "output_scores": output_scores}
+        return decoder_out._replace(
+            output_tokens=output_tokens,
+            output_scores=output_scores,
+            attn=None,
+            history=history
+        )
 
     def initialize_output_tokens(self, encoder_out, src_tokens):
         # length prediction
         _, length_tgt = self.decoder.forward_length_prediction(encoder_out)
-        max_length = length_tgt.max()
-        idx_length = torch.arange(max_length, device=src_tokens.device)
+        max_length = length_tgt.clamp_(min=2).max()
+        idx_length = utils.new_arange(src_tokens, max_length)
 
         initial_output_tokens = src_tokens.new_zeros(
             src_tokens.size(0), max_length
@@ -192,12 +159,16 @@ class NATransformerModel(TransformerModel):
 
         initial_output_scores = initial_output_tokens.new_zeros(
             *initial_output_tokens.size()
-        ).type_as(encoder_out["encoder_out"])
+        ).type_as(encoder_out.encoder_out)
 
-        return {
-            "output_tokens": initial_output_tokens,
-            "output_scores": initial_output_scores,
-        }
+        return DecoderOut(
+            output_tokens=initial_output_tokens,
+            output_scores=initial_output_scores,
+            attn=None,
+            step=0,
+            max_step=0,
+            history=None
+        )
 
 
 class NATransformerDecoder(TransformerDecoder):
@@ -218,11 +189,6 @@ class NATransformerDecoder(TransformerDecoder):
         self.src_embedding_copy = getattr(args, "src_embedding_copy", False)
         self.embed_length = Embedding(256, self.encoder_embed_dim, None)
 
-        self.ngram_predictor = getattr(args, "ngram_predictor", 1)
-        self.ngram_layer = (
-            None if (self.ngram_predictor == 1) else NgramDecoderLayer(args, True)
-        )
-
     def forward(
         self,
         prev_output_tokens,
@@ -240,25 +206,12 @@ class NATransformerDecoder(TransformerDecoder):
         )
 
         if tgt_tokens is not None:
-            if self.ngram_layer is None:
-                word_ins_mask = tgt_tokens.ne(self.padding_idx)
-                word_ins_tgt = tgt_tokens
-            else:
-                context_embeds, context_masks = self.forward_ngram_context(tgt_tokens)
-                features = self.ngram_layer(features, context_embeds=context_embeds)
-                word_ins_tgt = tgt_tokens[:, :, None].repeat(1, 1, self.ngram_predictor)
-                word_ins_mask = word_ins_tgt.ne(self.padding_idx) & context_masks
-
+            word_ins_mask = tgt_tokens.ne(self.padding_idx)
+            word_ins_tgt = tgt_tokens
             return self.output_layer(features), word_ins_tgt, word_ins_mask
 
         else:
-            if self.ngram_layer is None:
-                return F.log_softmax(self.output_layer(features), -1).max(-1)
-            else:
-                # inner iterations
-                return self.forward_ngram_decoding(
-                    features, prev_output_tokens.eq(self.padding_idx), decoding_format
-                )
+            return F.log_softmax(self.output_layer(features), -1).max(-1)
 
     def extract_features(
         self,
@@ -283,8 +236,8 @@ class NATransformerDecoder(TransformerDecoder):
         """
         # embedding
         if embedding_copy:
-            src_embd = encoder_out["encoder_embedding"]
-            src_mask = encoder_out["encoder_padding_mask"]
+            src_embd = encoder_out.encoder_embedding
+            src_mask = encoder_out.encoder_padding_mask
             src_mask = (
                 ~src_mask
                 if src_mask is not None
@@ -316,10 +269,8 @@ class NATransformerDecoder(TransformerDecoder):
 
             x, attn = layer(
                 x,
-                encoder_out["encoder_out"] if encoder_out is not None else None,
-                encoder_out["encoder_padding_mask"]
-                if encoder_out is not None
-                else None,
+                encoder_out.encoder_out if encoder_out is not None else None,
+                encoder_out.encoder_padding_mask if encoder_out is not None else None,
                 self_attn_mask=None,
                 self_attn_padding_mask=decoder_padding_mask,
             )
@@ -335,82 +286,6 @@ class NATransformerDecoder(TransformerDecoder):
             x = self.project_out_dim(x)
 
         return x, {"attn": attn, "inner_states": inner_states}
-
-    def forward_ngram_context(self, tgt_tokens):
-        tgt_embeds = self.forward_embedding(tgt_tokens)
-        n_contexts = self.ngram_predictor - 1
-
-        # shifting the embeddings
-        # context_embeds: N x B x T x C
-        # context_masks:  B x T x N
-        context_embeds = tgt_embeds.new_zeros(n_contexts, *tgt_embeds.size())
-        context_masks = tgt_embeds.new_ones(
-            *tgt_embeds.size()[:2], self.ngram_predictor
-        ).bool()
-
-        for k in range(n_contexts):
-            context_embeds[k, :, k + 1:] = tgt_embeds[:, : -k - 1]
-            context_masks[:, : k + 1, k + 1] = 0
-
-        return context_embeds, context_masks
-
-    def forward_ngram_decoding(self, features, padding_mask=None, decoding_format=None):
-        context_embeds = None
-        scores, tokens = [], []
-        ensemble_score = None
-        ensemble_index = None
-
-        if decoding_format is None:
-            decoding_format = "ensemble"
-
-        for k in range(self.ngram_predictor):
-            ngram_out = self.ngram_layer(
-                features, context_embeds=context_embeds, incremental=True
-            )
-            ngram_scores = F.log_softmax(self.output_layer(ngram_out), -1)
-            max_score, max_token = ngram_scores.max(-1)
-
-            if decoding_format == "vote":
-                ngram_scores = _argmax(ngram_scores, -1)
-
-            if ensemble_score is None:
-                ensemble_score = ngram_scores
-                ensemble_index = ensemble_score.new_ones(*ensemble_score.size()[:2])
-            else:
-                ensemble_index[:, k:] = ensemble_index[:, k:] + 1
-                ensemble_score = ensemble_score + ngram_scores.masked_fill_(
-                    (ensemble_index < k)
-                    .unsqueeze(2)
-                    .repeat(1, 1, ensemble_score.size(2)),
-                    0,
-                )
-                max_score[:, :k] = float("-inf")
-
-            if decoding_format == "unigram":
-                break
-
-            scores.append(max_score.masked_fill_(padding_mask, 0))
-            tokens.append(max_token.masked_fill_(padding_mask, self.padding_idx))
-
-            # context_embeds: N x B x T x C
-            if context_embeds is None:
-                context_embeds = self.forward_embedding(max_token).unsqueeze(0)
-
-            else:
-                context_embeds = torch.cat(
-                    [self.forward_embedding(max_token).unsqueeze(0), context_embeds], 0
-                )
-
-            context_embeds[:, :, 1:] = context_embeds[:, :, :-1]
-
-        if decoding_format != "dp":
-            ensemble_score = ensemble_score / ensemble_index.unsqueeze(2)
-            return ensemble_score.max(-1)
-
-        else:
-            tokens = torch.cat([t.unsqueeze(0) for t in tokens], 0)
-            scores = torch.cat([s.unsqueeze(0) for s in scores], 0)
-            return _dynamic_programming(tokens, scores)
 
     def forward_embedding(self, prev_output_tokens, states=None):
         # embed positions
@@ -450,8 +325,8 @@ class NATransformerDecoder(TransformerDecoder):
         return copied_embedding
 
     def forward_length_prediction(self, encoder_out, tgt_tokens=None):
-        enc_feats = encoder_out["encoder_out"]  # T x B x C
-        src_masks = encoder_out["encoder_padding_mask"]  # B x T or None
+        enc_feats = encoder_out.encoder_out  # T x B x C
+        src_masks = encoder_out.encoder_padding_mask  # B x T or None
 
         if self.pred_length_offset:
             if src_masks is None:
@@ -487,101 +362,6 @@ class NATransformerDecoder(TransformerDecoder):
                 length_tgt = pred_lengs
 
         return length_out, length_tgt
-
-
-class NgramDecoderLayer(TransformerDecoderLayer):
-    """
-    N-gram Decoder Layer:
-
-    This module can be pluged in the last layer of any Non-autoregressive Model's
-    It provides an alternative way to capture local n-gram information by running the block multiple times.
-    """
-
-    def __init__(self, args, no_encoder_attn=False):
-        super(NgramDecoderLayer, self).__init__(args, no_encoder_attn=no_encoder_attn)
-        self.self_attn = MultiheadAttention(
-            embed_dim=self.embed_dim,
-            num_heads=1,  # maybe n-gram does not need too many heads.
-            dropout=args.attention_dropout,
-            self_attention=False,
-            encoder_decoder_attention=True,
-        )
-
-    def forward(
-        self,
-        x,
-        encoder_out=None,
-        encoder_padding_mask=None,
-        context_embeds=None,
-        incremental=False,
-    ):
-        # x: T x B x C
-        # context_embeds: N x T x B x C
-        T, B, C = x.size()
-
-        residual = x
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
-        x = x.contiguous().view(1, T * B, C).contiguous()
-
-        if context_embeds is not None:
-            N = context_embeds.size(0)
-            context_embeds = context_embeds.view(N, T * B, C).contiguous()
-
-        if not incremental:
-            assert context_embeds is not None, "we need context for training"
-            # attn_weights: (n_head x T x B) x 1 x N
-            # v: (n_head x T x B) x N x (dim / n_head)
-            # -- move the attention computation outside --
-            attn_weights, values = self.self_attn(
-                query=x, key=context_embeds, value=context_embeds, before_softmax=True
-            )
-
-            attn_weights = attn_weights.repeat(1, N, 1)
-            attn_masks = attn_weights.new_ones(N, N).triu_(1).bool()
-            attn_masks = attn_masks.unsqueeze(0).repeat(attn_weights.size(0), 1, 1)
-
-            attn_weights = attn_weights.masked_fill(attn_masks, float("-inf"))
-            attn_weights = utils.softmax(attn_weights, dim=-1).type_as(attn_weights)
-            attn_weights = F.dropout(
-                attn_weights, p=self.self_attn.dropout, training=self.training
-            )
-
-            # (n_head x T x B) x N x (dim / n_head)
-            attn = torch.bmm(attn_weights, values)
-            attn = attn.transpose(0, 1).contiguous()
-            attn = attn.view(N, T * B, C).contiguous()
-            attn = attn.transpose(1, 0).contiguous()
-            attn = attn.view(T, B, N, C)
-
-            residual = residual.unsqueeze(2)
-            x = self.self_attn.out_proj(attn)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            x = torch.cat([residual, residual + x], 2)
-
-        else:
-            if context_embeds is None:
-                x = residual
-
-            else:
-                x, _ = self.self_attn(query=x, key=context_embeds, value=context_embeds)
-                x = x.view(T, B, C)
-                x = F.dropout(x, p=self.dropout, training=self.training)
-                x = residual + x
-
-        x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
-
-        if self.encoder_attn is not None:
-            raise NotImplementedError
-
-        residual = x
-        x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
-        x = self.activation_fn(self.fc1(x))
-        x = F.dropout(x, p=self.activation_dropout, training=self.training)
-        x = self.fc2(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = residual + x
-        x = self.maybe_layer_norm(self.final_layer_norm, x, after=True)
-        return x
 
 
 @register_model_architecture(
@@ -630,7 +410,6 @@ def base_architecture(args):
     args.pred_length_offset = getattr(args, "pred_length_offset", False)
     args.length_loss_factor = getattr(args, "length_loss_factor", 0.1)
     args.src_embedding_copy = getattr(args, "src_embedding_copy", False)
-    args.ngram_predictor = getattr(args, "ngram_predictor", 1)
 
 
 @register_model_architecture(

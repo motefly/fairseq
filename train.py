@@ -76,7 +76,12 @@ def main(args, init_distributed=False):
     train_meter = StopwatchMeter()
     train_meter.start()
     valid_subsets = args.valid_subset.split(',')
-    while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
+    while (
+        lr > args.min_lr
+        and (epoch_itr.epoch < max_epoch or (epoch_itr.epoch == max_epoch
+            and epoch_itr._next_epoch_itr is not None))
+        and trainer.get_num_updates() < max_update
+    ):
         # train for one epoch
         train(args, trainer, task, epoch_itr)
 
@@ -135,9 +140,10 @@ def train(args, trainer, task, epoch_itr):
             stats[k] = extra_meters[k].avg
         progress.log(stats, tag='train', step=stats['num_updates'])
 
-        # ignore the first mini-batch in words-per-second calculation
+        # ignore the first mini-batch in words-per-second and updates-per-second calculation
         if i == 0:
             trainer.get_meter('wps').reset()
+            trainer.get_meter('ups').reset()
 
         num_updates = trainer.get_num_updates()
         if (
