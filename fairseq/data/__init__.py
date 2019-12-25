@@ -28,6 +28,7 @@ from .numel_dataset import NumelDataset
 from .num_samples_dataset import NumSamplesDataset
 from .offset_tokens_dataset import OffsetTokensDataset
 from .pad_dataset import LeftPadDataset, PadDataset, RightPadDataset
+from .pad_to_len_dataset import PadToLenDataset
 from .prepend_dataset import PrependDataset
 from .prepend_token_dataset import PrependTokenDataset
 from .raw_label_dataset import RawLabelDataset
@@ -80,12 +81,13 @@ __all__ = [
     'NumSamplesDataset',
     'OffsetTokensDataset',
     'PadDataset',
+    'PadToLenDataset',
     'PrependDataset',
     'PrependTokenDataset',
     'ReplaceDataset',
     'FileAudioDataset',
     'RawLabelDataset',
-    'ResamplingDataset'
+    'ResamplingDataset',
     'RightPadDataset',
     'RoundRobinZipDatasets',
     'ShardedDataset',

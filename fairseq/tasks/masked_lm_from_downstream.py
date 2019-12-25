@@ -18,6 +18,7 @@ from fairseq.data import (
     NumelDataset,
     NumSamplesDataset,
     PadDataset,
+    PadToLenDataset,
     PrependTokenDataset,
     SortDataset,
     TokenBlockDataset,
@@ -144,17 +145,19 @@ class MaskedLMFromDownstreamTask(FairseqTask):
                 {
                     'id': IdDataset(),
                     'net_input': {
-                        'src_tokens': PadDataset(
+                        'src_tokens': PadToLenDataset(
                             src_dataset,
                             pad_idx=self.source_dictionary.pad(),
                             left_pad=False,
+                            pad_len=self.args.max_positions
                         ),
                         'src_lengths': NumelDataset(src_dataset, reduce=False),
                     },
-                    'target': PadDataset(
+                    'target': PadToLenDataset(
                         tgt_dataset,
                         pad_idx=self.source_dictionary.pad(),
                         left_pad=False,
+                        pad_len=self.args.max_positions
                     ),
                     'nsentences': NumSamplesDataset(),
                     'ntokens': NumelDataset(src_dataset, reduce=True),
