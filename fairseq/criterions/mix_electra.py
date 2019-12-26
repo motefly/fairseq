@@ -61,6 +61,10 @@ class MixElectraLoss(FairseqCriterion):
                                                                         masked_tokens.view(-1).nonzero().view(-1),
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
 
+        # update replace operation
+        fake_replaced_tokens = sample['net_input']['src_tokens'][replaced_tokens].eq(sample['target'][replaced_tokens])
+        sample['operation'][replaced_tokens][fake_replaced_tokens] = 0
+
         mlm_sample_size = (mlm_tokens & not_pad_tokens).int().sum().item() 
 
         # (Rare case) When all tokens are masked, the model results in empty
