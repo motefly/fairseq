@@ -58,8 +58,6 @@ class MixElectraLoss(FairseqCriterion):
                                                                         masked_tokens.view(-1).nonzero().view(-1),
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
 
-        import pdb
-        pdb.set_trace()
         # update replace operation
         fake_replaced_tokens = sample['net_input']['src_tokens'][replaced_tokens].eq(sample['target'][replaced_tokens])
         sample['operation'][replaced_tokens][fake_replaced_tokens] = 0
