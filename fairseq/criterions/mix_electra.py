@@ -32,9 +32,6 @@ class MixElectraLoss(FairseqCriterion):
         # compute MLM loss
         mask_idx = self.task.dictionary.index('<mask>')
         replace_idx = self.task.dictionary.index('<replace>')
-        mlm_tokens = (sample['operation']==5)
-        if self.args.predict_replace:
-            mlm_tokens = mlm_tokens | (sample['operation']==1)
         unmask_tokens = (sample['operation']!=5) # to-do: optimize the operation define
         not_pad_tokens = sample['net_input']['src_tokens'].ne(self.padding_idx)
 
@@ -42,7 +39,7 @@ class MixElectraLoss(FairseqCriterion):
             with torch.no_grad():
                 replaced_tokens = sample['net_input']['src_tokens'].eq(replace_idx)
                 if replaced_tokens.int().sum() > 0:
-                    gen_samples = sample['target']
+                    gen_samples = sample['target'].clone()
                     gen_samples[replaced_tokens] = mask_idx
 
                     mlm_logits, _ = model(gen_samples, mlm_tokens=replaced_tokens, bin_tokens=None)[0]
@@ -61,9 +58,15 @@ class MixElectraLoss(FairseqCriterion):
                                                                         masked_tokens.view(-1).nonzero().view(-1),
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
 
+        import pdb
+        pdb.set_trace()
         # update replace operation
         fake_replaced_tokens = sample['net_input']['src_tokens'][replaced_tokens].eq(sample['target'][replaced_tokens])
         sample['operation'][replaced_tokens][fake_replaced_tokens] = 0
+
+        mlm_tokens = (sample['operation']==5)
+        if self.args.predict_replace:
+            mlm_tokens = mlm_tokens | (sample['operation']==1)
 
         mlm_sample_size = (mlm_tokens & not_pad_tokens).int().sum().item() 
 
