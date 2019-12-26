@@ -59,8 +59,8 @@ class MixElectraLoss(FairseqCriterion):
                                                                         (~not_pad_tokens).view(-1).nonzero().view(-1)).detach()
 
         # update replace operation
-        fake_replaced_tokens = sample['net_input']['src_tokens'][replaced_tokens].eq(sample['target'][replaced_tokens])
-        sample['operation'][replaced_tokens][fake_replaced_tokens] = 0
+        fake_replaced_tokens = sample['net_input']['src_tokens'].eq(sample['target']) & (sample['operation'] == 1)
+        sample['operation'][fake_replaced_tokens] = 0
 
         mlm_tokens = (sample['operation']==5)
         if self.args.predict_replace:
