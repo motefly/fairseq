@@ -9,15 +9,14 @@ Train a new model on one or across multiple GPUs.
 
 import collections
 import math
-import random
-
 import numpy as np
+import random
 import torch
 
 from fairseq import checkpoint_utils, distributed_utils, options, progress_bar, tasks, utils
 from fairseq.data import iterators
-from fairseq.trainer import Trainer
 from fairseq.meters import AverageMeter, StopwatchMeter
+from fairseq.trainer import Trainer
 
 
 def main(args, init_distributed=False):
@@ -77,10 +76,10 @@ def main(args, init_distributed=False):
     train_meter.start()
     valid_subsets = args.valid_subset.split(',')
     while (
-        lr > args.min_lr
-        and (epoch_itr.epoch < max_epoch or (epoch_itr.epoch == max_epoch
-            and epoch_itr._next_epoch_itr is not None))
-        and trainer.get_num_updates() < max_update
+            lr > args.min_lr
+            and (epoch_itr.epoch < max_epoch or (epoch_itr.epoch == max_epoch
+                                                 and epoch_itr._next_epoch_itr is not None))
+            and trainer.get_num_updates() < max_update
     ):
         # train for one epoch
         train(args, trainer, task, epoch_itr)
@@ -147,10 +146,10 @@ def train(args, trainer, task, epoch_itr):
 
         num_updates = trainer.get_num_updates()
         if (
-            not args.disable_validation
-            and args.save_interval_updates > 0
-            and num_updates % args.save_interval_updates == 0
-            and num_updates > 0
+                not args.disable_validation
+                and args.save_interval_updates > 0
+                and num_updates % args.save_interval_updates == 0
+                and num_updates > 0
         ):
             valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
             checkpoint_utils.save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
@@ -325,7 +324,7 @@ def cli_main():
             print('| NOTE: you may get better performance with: --ddp-backend=no_c10d')
         torch.multiprocessing.spawn(
             fn=distributed_main,
-            args=(args, ),
+            args=(args,),
             nprocs=args.distributed_world_size,
         )
     else:

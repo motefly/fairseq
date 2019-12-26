@@ -4,12 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-
 import torch
 import torch.nn.functional as F
 
 from fairseq import utils
-
 from . import FairseqCriterion, register_criterion
 
 
@@ -73,7 +71,8 @@ class MaskedLmLoss(FairseqCriterion):
 
         agg_output = {
             'loss': loss / sample_size / math.log(2),
-            'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2) if ntokens > 0 else 0.,
+            'nll_loss': (sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2)
+                         if ntokens > 0 else 0.),
             'ntokens': ntokens,
             'nsentences': nsentences,
             'sample_size': sample_size,

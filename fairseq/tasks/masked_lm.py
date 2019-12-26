@@ -3,9 +3,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
-
 import numpy as np
+import os
 
 from fairseq.data import (
     data_utils,
@@ -20,8 +19,8 @@ from fairseq.data import (
     SortDataset,
     TokenBlockDataset,
 )
-from fairseq.tasks import FairseqTask, register_task
 from fairseq.data.encoders.utils import get_whole_word_mask
+from fairseq.tasks import FairseqTask, register_task
 
 
 @register_task('masked_lm')
@@ -97,7 +96,7 @@ class MaskedLMTask(FairseqTask):
             self.args.tokens_per_sample - 1,  # one less for <s>
             pad=self.source_dictionary.pad(),
             eos=self.source_dictionary.eos(),
-            break_mode=self.args.sample_break_mode,
+            break_mode=self.args.sample_break_mode
         )
         print('| loaded {} blocks from: {}'.format(len(dataset), split_path))
 

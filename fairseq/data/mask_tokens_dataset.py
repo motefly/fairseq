@@ -3,13 +3,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from functools import lru_cache
-
 import numpy as np
 import torch
+from functools import lru_cache
 
 from fairseq.data import data_utils, Dictionary
-
 from . import BaseWrapperDataset, LRUCacheDataset
 
 
@@ -52,18 +50,18 @@ class MaskTokensDataset(BaseWrapperDataset):
         )
 
     def __init__(
-        self,
-        dataset: torch.utils.data.Dataset,
-        vocab: Dictionary,
-        pad_idx: int,
-        mask_idx: int,
-        return_masked_tokens: bool = False,
-        seed: int = 1,
-        mask_prob: float = 0.15,
-        leave_unmasked_prob: float = 0.1,
-        random_token_prob: float = 0.1,
-        freq_weighted_replacement: bool = False,
-        mask_whole_words: torch.Tensor = None,
+            self,
+            dataset: torch.utils.data.Dataset,
+            vocab: Dictionary,
+            pad_idx: int,
+            mask_idx: int,
+            return_masked_tokens: bool = False,
+            seed: int = 1,
+            mask_prob: float = 0.15,
+            leave_unmasked_prob: float = 0.1,
+            random_token_prob: float = 0.1,
+            freq_weighted_replacement: bool = False,
+            mask_whole_words: torch.Tensor = None,
     ):
         assert 0.0 < mask_prob < 1.0
         assert 0.0 <= random_token_prob <= 1.0

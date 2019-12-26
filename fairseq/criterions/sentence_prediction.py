@@ -4,12 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-
 import torch
 import torch.nn.functional as F
 
 from fairseq import utils
-
 from . import FairseqCriterion, register_criterion
 
 
@@ -32,7 +30,7 @@ class SentencePredictionCriterion(FairseqCriterion):
         3) logging outputs to display while training
         """
         assert hasattr(model, 'classification_heads') and \
-            'sentence_classification_head' in model.classification_heads, \
+               'sentence_classification_head' in model.classification_heads, \
             "model must provide sentence classification head for --criterion=sentence_prediction"
 
         logits, _ = model(
@@ -89,7 +87,7 @@ class SentencePredictionCriterion(FairseqCriterion):
 
         if len(logging_outputs) > 0 and 'ncorrect' in logging_outputs[0]:
             ncorrect = sum(log.get('ncorrect', 0) for log in logging_outputs)
-            agg_output.update(accuracy=ncorrect/nsentences)
+            agg_output.update(accuracy=ncorrect / nsentences)
 
         if sample_size != ntokens:
             agg_output['nll_loss'] = loss_sum / ntokens / math.log(2)
