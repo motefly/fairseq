@@ -110,14 +110,22 @@ class Electra(FairseqLanguageModel):
         return cls(args, gen_encoder, disc_encoder)
 
     def negative_sample(self, input, output):
+        output = output.clone()
+        input = input.clone()
         replace_tokens = input.ne(output)
 
         items = output.cpu().numpy()
         strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
         neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0], replace=True)).cuda().long().view(input.size())
-        neg_output[replace_tokens] = input[replace_tokens]
+        # neg_output[replace_tokens] = input[replace_tokens]
+        # temp = neg_output[replace_tokens]
+        # neg_output[replace_tokens] = output[replace_tokens]
+        # output[replace_tokens] = temp
         
-        return torch.cat([neg_output.unsqueeze(2),output.unsqueeze(2)], axis=-1)
+        # return torch.cat([neg_output.unsqueeze(2),output.unsqueeze(2)], axis=-1)
+
+        neg_output[replace_tokens] = output[replace_tokens]
+        return torch.cat([neg_output.unsqueeze(2),input.unsqueeze(2)], axis=-1)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
@@ -478,12 +486,14 @@ class NSDiscLMHead(nn.Module):
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
-
-        weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim)
-        x = x.view(-1, 1, self.embed_dim)
-        # project back to size of vocabulary with bias
-        x = torch.bmm(x, weight) + self.bias
-        return x.view(-1, self.output_dim)
+        if out_helper is not None:
+            weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim)
+            x = x.view(-1, 1, self.embed_dim)
+            # project back to size of vocabulary with bias
+            x = torch.bmm(x, weight) + self.bias
+            return x.view(-1, self.output_dim)
+        else:
+            return x
 
 @register_model_architecture('electra', 'electra')
 def base_architecture(args):
