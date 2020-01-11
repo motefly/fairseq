@@ -25,6 +25,8 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 from .hub_interface import ElectraHubInterface
 
+import numpy as np
+
 
 @register_model('electra')
 class Electra(FairseqLanguageModel):
@@ -94,6 +96,9 @@ class Electra(FairseqLanguageModel):
         # make sure all arguments are present
         base_architecture(args)
 
+        args.vocab_num = len(task.source_dictionary)
+        args.vocab_nspecial = task.source_dictionary.nspecial
+
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
 
@@ -104,7 +109,17 @@ class Electra(FairseqLanguageModel):
             gen_encoder = None
         return cls(args, gen_encoder, disc_encoder)
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, **kwargs):
+    def negative_sample(self, input, output):
+        replace_tokens = input.ne(output)
+
+        items = output.cpu().numpy()
+        strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
+        neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0], replace=True)).cuda().long().view(input.size())
+        neg_output[replace_tokens] = input[replace_tokens]
+        
+        return torch.cat([neg_output.unsqueeze(2),output.unsqueeze(2)], axis=-1)
+
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
             features_only = True
 
@@ -124,9 +139,10 @@ class Electra(FairseqLanguageModel):
                 src_tokens[masked_tokens] = sampled_tokens
             else:
                 src_tokens = sampled_tokens.view(src_tokens.size())
-        
+        with torch.no_grad():
+            negative_sample_helper = self.negative_sample(src_tokens, targets)
         # for discriminator, predict all of the tokens
-        disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, **kwargs)
+        disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
 
         if classification_head_name is not None:
             disc_x = self.classification_heads[classification_head_name](disc_x)
@@ -380,12 +396,14 @@ class DiscEncoder(FairseqDecoder):
             apply_bert_init=True,
             activation_fn=args.activation_fn,
         )
-        self.lm_head = DiscLMHead(
-            embed_dim=args.encoder_embed_dim,
-            output_dim=1
+        self.lm_head = NSDiscLMHead(
+            embed_dim=int(args.encoder_embed_dim),
+            output_dim=2,
+            activation_fn=args.activation_fn,
+            embed_tokens=self.sentence_encoder.embed_tokens,
         )
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
+    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, out_helper=None, **unused):
         """
         Args:
             src_tokens (LongTensor): input tokens of shape `(batch, src_len)`
@@ -403,7 +421,7 @@ class DiscEncoder(FairseqDecoder):
         """
         x, extra = self.extract_features(src_tokens, return_all_hiddens)
         if not features_only:
-            x = self.output_layer(x, masked_tokens=masked_tokens)
+            x = self.output_layer(x, masked_tokens=masked_tokens, out_helper=out_helper)
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -414,8 +432,8 @@ class DiscEncoder(FairseqDecoder):
         features = inner_states[-1]
         return features, {'inner_states': inner_states if return_all_hiddens else None}
 
-    def output_layer(self, features, masked_tokens=None, **unused):
-        return self.lm_head(features, masked_tokens)
+    def output_layer(self, features, masked_tokens=None, out_helper=None, **unused):
+        return self.lm_head(features, masked_tokens, out_helper)
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
@@ -436,6 +454,36 @@ class DiscLMHead(nn.Module):
             features = features[masked_tokens, :]
         return self.dense(features)
 
+class NSDiscLMHead(nn.Module):
+    """Head for masked language modeling."""
+
+    def __init__(self, embed_dim, output_dim, activation_fn, embed_tokens):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.output_dim = output_dim
+        self.dense = nn.Linear(embed_dim, embed_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.layer_norm = LayerNorm(embed_dim)
+
+        self.embed_tokens = embed_tokens
+
+        self.bias = nn.Parameter(torch.zeros(output_dim))
+
+    def forward(self, features, masked_tokens=None, out_helper=None, **kwargs):
+        # Only project the unmasked tokens while training,
+        # saves both memory and computation
+        if masked_tokens is not None:
+            features = features[masked_tokens, :]
+ 
+        x = self.dense(features)
+        x = self.activation_fn(x)
+        x = self.layer_norm(x)
+
+        weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim)
+        x = x.view(-1, 1, self.embed_dim)
+        # project back to size of vocabulary with bias
+        x = torch.bmm(x, weight) + self.bias
+        return x.view(-1, self.output_dim)
 
 @register_model_architecture('electra', 'electra')
 def base_architecture(args):
