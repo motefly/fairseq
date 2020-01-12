@@ -64,6 +64,8 @@ class Electra(FairseqLanguageModel):
                             help='num encoder attention heads')
         parser.add_argument('--generator-size-divider', type=int,
                             help='divider for generator: layer size, FFN size and attention heads')
+        parser.add_argument('--class-num', type=int, default=10,
+                            help='total number of classes')
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use')
@@ -104,7 +106,7 @@ class Electra(FairseqLanguageModel):
 
         disc_encoder = DiscEncoder(args, task.source_dictionary)
         if args.task == 'electra':
-            gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens)
+            gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens, disc_encoder.lm_head.bias.weight)
         else:
             gen_encoder = None
         return cls(args, gen_encoder, disc_encoder)
@@ -116,7 +118,7 @@ class Electra(FairseqLanguageModel):
 
         items = output.cpu().numpy()
         strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
-        neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0], replace=True)).cuda().long().view(input.size())
+        neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0]*self.args.class_num, replace=True)).cuda().long().view(input.size(0),input.size(1),-1)
         # neg_output[replace_tokens] = input[replace_tokens]
         # temp = neg_output[replace_tokens]
         # neg_output[replace_tokens] = output[replace_tokens]
@@ -124,8 +126,9 @@ class Electra(FairseqLanguageModel):
         
         # return torch.cat([neg_output.unsqueeze(2),output.unsqueeze(2)], axis=-1)
 
-        neg_output[replace_tokens] = output[replace_tokens]
-        return torch.cat([neg_output.unsqueeze(2),input.unsqueeze(2)], axis=-1)
+        neg_output[:,:,0][replace_tokens] = output[replace_tokens]
+        neg_output[:,:,1] = input
+        return neg_output
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
@@ -248,7 +251,7 @@ class Electra(FairseqLanguageModel):
 class GeneratorLMHead(nn.Module):
     """Head for masked language modeling."""
 
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, share_emb_pro=None):
+    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, share_emb_pro=None, bias_helper=None):
         super().__init__()
         self.dense = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
@@ -262,7 +265,10 @@ class GeneratorLMHead(nn.Module):
         else:
             self.add_one_linear = False
         self.weight = weight
-        self.bias = nn.Parameter(torch.zeros(output_dim))
+        if bias_helper is None:
+            self.bias = nn.Parameter(torch.zeros(output_dim))
+        else:
+            self.bias = bias_helper
 
     def forward(self, features, masked_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -279,7 +285,7 @@ class GeneratorLMHead(nn.Module):
         else:
             weight = self.weight
         # project back to size of vocabulary with bias
-        x = F.linear(x, weight) + self.bias
+        x = F.linear(x, weight) + self.bias.view(-1)
         return x
 
 
@@ -310,7 +316,7 @@ class GeneratorEncoder(FairseqDecoder):
     by :class:`~fairseq.models.FairseqLanguageModel`.
     """
 
-    def __init__(self, args, dictionary, share_embed_tokens):
+    def __init__(self, args, dictionary, share_embed_tokens, lmhead_bias_helper):
         super().__init__(dictionary)
         self.args = args
         self.sentence_encoder = TransformerSentenceEncoder(
@@ -338,6 +344,7 @@ class GeneratorEncoder(FairseqDecoder):
             activation_fn=args.activation_fn,
             weight=self.sentence_encoder.embed_tokens.weight,
             share_emb_pro=self.sentence_encoder.embed_linear,
+            bias_helper=lmhead_bias_helper,
         )
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, **unused):
@@ -406,7 +413,7 @@ class DiscEncoder(FairseqDecoder):
         )
         self.lm_head = NSDiscLMHead(
             embed_dim=int(args.encoder_embed_dim),
-            output_dim=2,
+            output_dim=args.class_num,
             activation_fn=args.activation_fn,
             embed_tokens=self.sentence_encoder.embed_tokens,
         )
@@ -474,8 +481,7 @@ class NSDiscLMHead(nn.Module):
         self.layer_norm = LayerNorm(embed_dim)
 
         self.embed_tokens = embed_tokens
-
-        self.bias = nn.Parameter(torch.zeros(output_dim))
+        self.bias = nn.Embedding(embed_tokens.num_embeddings, 1)
 
     def forward(self, features, masked_tokens=None, out_helper=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -488,10 +494,11 @@ class NSDiscLMHead(nn.Module):
         x = self.layer_norm(x)
         if out_helper is not None:
             weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim)
+            bias = self.bias(out_helper).view(-1, self.output_dim)
             x = x.view(-1, 1, self.embed_dim)
             # project back to size of vocabulary with bias
-            x = torch.bmm(x, weight) + self.bias
-            return x.view(-1, self.output_dim)
+            x = torch.bmm(x, weight)
+            return x.view(-1, self.output_dim) + bias
         else:
             return x
 

@@ -64,6 +64,7 @@ class ElectraLoss(FairseqCriterion):
         # disc_loss = F.binary_cross_entropy_with_logits(disc_output[not_pad_tokens].float().view(-1),
         #     disc_targets.view(-1), reduction='sum')
 
+
         disc_loss = F.nll_loss(
             F.log_softmax(
                 disc_output[not_pad_tokens.view(-1)].float(), 
@@ -77,9 +78,9 @@ class ElectraLoss(FairseqCriterion):
 
         loss = gen_loss + self.args.loss_lamda * disc_loss * sample_size / disc_sample_size
 
-        tp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 1) & (disc_targets == 1)).long().sum()
-        fp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 1) & (disc_targets == 0)).long().sum()
-        fn = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 0) & (disc_targets == 1)).long().sum()
+        tp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) >= 1) & (disc_targets >= 1)).long().sum()
+        fp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) >= 1) & (disc_targets == 0)).long().sum()
+        fn = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 0) & (disc_targets >= 1)).long().sum()
         tn = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 0) & (disc_targets == 0)).long().sum()
         assert (tp + fp + tn + fn) == disc_targets.size(0), 'invalid size'
 
