@@ -111,14 +111,24 @@ class Electra(FairseqLanguageModel):
             gen_encoder = None
         return cls(args, gen_encoder, disc_encoder)
 
-    def negative_sample(self, input, output):
-        output = output.clone()
-        input = input.clone()
+    def negative_sample(self, input, output, generator, src_tokens):
+        # output = output.clone()
+        # input = input.clone()
         replace_tokens = input.ne(output)
 
-        items = output.cpu().numpy()
-        strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
-        neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0]*self.args.class_num, replace=True)).cuda().long().view(input.size(0),input.size(1),-1)
+        # non_replace_tokens = (~ replace_tokens)
+        non_replace_logits = generator(src_tokens, features_only=False, return_all_hiddens=False)[0]
+        non_replace_logits = non_replace_logits.view(-1, non_replace_logits.size(-1))
+
+        non_replace_logits[torch.arange(non_replace_logits.size(0)),output.view(-1)] = float('-inf')
+        
+        sample_probs = torch.softmax(non_replace_logits, -1, dtype=torch.float32).view(-1, non_replace_logits.size(-1))
+
+        neg_output = torch.multinomial(sample_probs, self.args.class_num, replacement=True).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)
+        
+        # items = output.cpu().numpy()
+        # strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
+        # neg_output = torch.from_numpy(np.random.choice(strange, items.reshape(-1).shape[0]*self.args.class_num, replace=True)).cuda().long().view(input.size(0),input.size(1),-1)
         # neg_output[replace_tokens] = input[replace_tokens]
         # temp = neg_output[replace_tokens]
         # neg_output[replace_tokens] = output[replace_tokens]
@@ -145,21 +155,21 @@ class Electra(FairseqLanguageModel):
             #     pdb.set_trace()
 
             # detach the gradient bp and construct a new input
-            src_tokens = src_tokens.clone()
+            d_src_tokens = src_tokens.clone()
             if masked_tokens is not None:
-                src_tokens[masked_tokens] = sampled_tokens
+                d_src_tokens[masked_tokens] = sampled_tokens
             else:
-                src_tokens = sampled_tokens.view(src_tokens.size())
+                d_src_tokens = sampled_tokens.view(d_src_tokens.size())
         with torch.no_grad():
-            negative_sample_helper = self.negative_sample(src_tokens, targets)
+            negative_sample_helper = self.negative_sample(d_src_tokens, targets, self.generator, src_tokens)
         # for discriminator, predict all of the tokens
-        disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
+        disc_x, extra = self.discriminator(d_src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
 
         if classification_head_name is not None:
             disc_x = self.classification_heads[classification_head_name](disc_x)
         
         if self.generator is not None:
-            return gen_x, disc_x, src_tokens, extra
+            return gen_x, disc_x, d_src_tokens, extra
         else:
             return disc_x, extra
 
