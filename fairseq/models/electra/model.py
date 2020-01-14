@@ -160,8 +160,12 @@ class Electra(FairseqLanguageModel):
                 d_src_tokens[masked_tokens] = sampled_tokens
             else:
                 d_src_tokens = sampled_tokens.view(d_src_tokens.size())
-        with torch.no_grad():
-            negative_sample_helper = self.negative_sample(d_src_tokens, targets, self.generator, src_tokens)
+        if self.args.task == 'electra':
+            with torch.no_grad():
+                negative_sample_helper = self.negative_sample(d_src_tokens, targets, self.generator, src_tokens)
+        else:
+            d_src_tokens = src_tokens
+            negative_sample_helper = None
         # for discriminator, predict all of the tokens
         disc_x, extra = self.discriminator(d_src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
 
