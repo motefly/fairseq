@@ -124,7 +124,7 @@ class Electra(FairseqLanguageModel):
         
         sample_probs = torch.softmax(non_replace_logits, -1, dtype=torch.float32).view(-1, non_replace_logits.size(-1))
 
-        neg_output = torch.multinomial(sample_probs, self.args.class_num, replacement=True).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)
+        neg_output = torch.multinomial(sample_probs, self.args.class_num-1, replacement=True).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num-1)
         
         # items = output.cpu().numpy()
         # strange = np.setdiff1d(np.arange(self.args.vocab_num)[self.args.vocab_nspecial+1:], items)
@@ -137,7 +137,7 @@ class Electra(FairseqLanguageModel):
         # return torch.cat([neg_output.unsqueeze(2),output.unsqueeze(2)], axis=-1)
 
         neg_output[:,:,0][replace_tokens] = output[replace_tokens]
-        neg_output[:,:,1] = input
+        # neg_output[:,:,1] = input
         return neg_output
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
@@ -160,12 +160,8 @@ class Electra(FairseqLanguageModel):
                 d_src_tokens[masked_tokens] = sampled_tokens
             else:
                 d_src_tokens = sampled_tokens.view(d_src_tokens.size())
-        if self.args.task == 'electra':
-            with torch.no_grad():
-                negative_sample_helper = self.negative_sample(d_src_tokens, targets, self.generator, src_tokens)
-        else:
-            d_src_tokens = src_tokens
-            negative_sample_helper = None
+        with torch.no_grad():
+            negative_sample_helper = self.negative_sample(d_src_tokens, targets, self.generator, src_tokens)
         # for discriminator, predict all of the tokens
         disc_x, extra = self.discriminator(d_src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
 
@@ -496,6 +492,8 @@ class NSDiscLMHead(nn.Module):
 
         self.embed_tokens = embed_tokens
         self.bias = nn.Embedding(embed_tokens.num_embeddings, 1)
+        self.special_emb = nn.Embedding(1, embed_dim)
+        self.special_bias_emb = nn.Parameter(torch.zeros(1))
 
     def forward(self, features, masked_tokens=None, out_helper=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -507,12 +505,16 @@ class NSDiscLMHead(nn.Module):
         x = self.activation_fn(x)
         x = self.layer_norm(x)
         if out_helper is not None:
-            weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim)
-            bias = self.bias(out_helper).view(-1, self.output_dim)
+            bias = self.special_bias_emb.view(-1)
+            special_out = (torch.mm(x.view(-1, self.embed_dim), self.special_emb.weight.view(self.embed_dim, 1)) + bias).view(-1, 1)
+
+            weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim-1)
+            bias = self.bias(out_helper).view(-1, self.output_dim-1)
             x = x.view(-1, 1, self.embed_dim)
             # project back to size of vocabulary with bias
             x = torch.bmm(x, weight)
-            return x.view(-1, self.output_dim) + bias
+            x = x.view(-1, self.output_dim-1) + bias
+            return torch.cat([x,special_out], -1)
         else:
             return x
 
