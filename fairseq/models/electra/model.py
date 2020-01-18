@@ -25,26 +25,23 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 from .hub_interface import ElectraHubInterface
 
-import numpy as np
-
-
 @register_model('electra')
-class Electra(FairseqLanguageModel):
+class ElectraModel(FairseqLanguageModel):
 
     @classmethod
     def hub_models(cls):
         return {
-            'Electra.base': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.base.tar.gz',
-            'Electra.large': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.tar.gz',
-            'Electra.large.mnli': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.mnli.tar.gz',
-            'Electra.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.wsc.tar.gz',
+            'ElectraModel.base': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.base.tar.gz',
+            'ElectraModel.large': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.tar.gz',
+            'ElectraModel.large.mnli': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.mnli.tar.gz',
+            'ElectraModel.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.wsc.tar.gz',
         }
 
-    def __init__(self, args, gen_encoder, disc_encoder):
+    def __init__(self, args, gen_encoder, disc_encoder, neither_idx):
         super().__init__(disc_encoder)
         self.generator = gen_encoder
-        self.discriminator = disc_encoder
         self.args = args
+        self.neither_idx = neither_idx
 
         # We follow BERT's random weight initialization
         self.apply(init_bert_params)
@@ -109,51 +106,58 @@ class Electra(FairseqLanguageModel):
             gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens, disc_encoder.lm_head.bias.weight)
         else:
             gen_encoder = None
-        return cls(args, gen_encoder, disc_encoder)
-
-    def negative_sample(self, features, output, gen_lm_head, replace_tokens):
-        non_replace_logits = gen_lm_head(features)
-        non_replace_logits = non_replace_logits.view(-1, non_replace_logits.size(-1))
-
-        non_replace_logits[torch.arange(non_replace_logits.size(0)),output.view(-1)] = float('-inf')
-        
-        sample_probs = torch.softmax(non_replace_logits, -1, dtype=torch.float32).view(-1, non_replace_logits.size(-1))
-
-        neg_output = torch.multinomial(sample_probs, self.args.class_num-1, replacement=True).view(output.size(0), output.size(1), self.args.class_num-1)
-
-        neg_output[:,:,0][replace_tokens] = output[replace_tokens]
-        return neg_output
+        return cls(args, gen_encoder, disc_encoder, task.source_dictionary.index('<neither>'))
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
             features_only = True
 
-        if self.generator is not None:
-            # x-shape: (batch, src_len, vocab)
-            gen_x, features = self.generator(src_tokens, features_only, return_all_hiddens, masked_tokens, return_top_features=True, **kwargs)
-            sample_probs = torch.softmax(gen_x, -1, dtype=torch.float32).view(-1, gen_x.size(-1)).detach()
-            # sampled_tokens-shape: (batch*src_len, 1)
-            sampled_tokens = torch.multinomial(sample_probs, 1).view(-1)
-
-            # detach the gradient bp and construct a new input
-            src_tokens = src_tokens.clone()
-            if masked_tokens is not None:
-                src_tokens[masked_tokens] = sampled_tokens
-            else:
-                src_tokens = sampled_tokens.view(src_tokens.size())
         if self.args.task == 'electra':
+            gen_x_mask, features, _ = self.generator(
+                src_tokens,
+                features_only=False,
+                return_all_hiddens=False,
+                masked_tokens=masked_tokens,
+                return_top_features=True,
+                **kwargs
+            )  # Float[num_masked, vocab]
+
             with torch.no_grad():
-                features = features[0]
+                gen_x_all = self.generator.lm_head(features, masked_tokens=None)
+                sample_probs = torch.softmax(gen_x_all.detach(), -1, dtype=torch.float32)  # Float[bs, seq_len, vocab]
+                sample_probs = sample_probs.view(-1, sample_probs.size(-1))  # Float[bs * seq_len, vocab]
+                sampled_tokens = torch.multinomial(
+                    sample_probs, self.args.class_num, replacement=True
+                ).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)  # Float[bs, seq_len, class_num]
+
+                src_tokens = src_tokens.clone()
+                assert masked_tokens is not None  # masked_tokens : Float[bs, seq_len]
+                src_tokens[masked_tokens] = sampled_tokens[:, :, 0][masked_tokens]
+
+                # for replaced tokens, the correct label is 1-th element (the target)
                 replace_tokens = src_tokens.ne(targets)
-                negative_sample_helper = self.negative_sample(features, targets, self.generator.lm_head, replace_tokens)
-        # for discriminator, predict all of the tokens
-        disc_x, extra = self.discriminator(src_tokens, features_only, return_all_hiddens, masked_tokens=None, out_helper=negative_sample_helper, **kwargs)
+                sampled_tokens[:, :, 1][replace_tokens] = targets[replace_tokens]
+
+                # for non-replaced tokens, the correct label is 0-th element (the <neither> token)
+                sampled_tokens[:, :, 0] = self.neither_idx
+
+                # generate targets according to the rule mentioned above
+                disc_target = replace_tokens.long()
+
+        disc_x, extra = self.decoder(
+            src_tokens,
+            features_only=features_only,
+            return_all_hiddens=return_all_hiddens,
+            masked_tokens=None,  # for discriminator, predict all of the tokens
+            out_helper=sampled_tokens if self.args.task == 'electra' else None,
+            **kwargs
+        )
 
         if classification_head_name is not None:
             disc_x = self.classification_heads[classification_head_name](disc_x)
         
-        if self.generator is not None:
-            return gen_x, disc_x, src_tokens, extra
+        if self.args.task == 'electra':
+            return gen_x_mask, disc_x, src_tokens, disc_target, extra
         else:
             return disc_x, extra
 
@@ -245,7 +249,7 @@ class Electra(FairseqLanguageModel):
 class GeneratorLMHead(nn.Module):
     """Head for masked language modeling."""
 
-    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, share_emb_pro=None, bias_helper=None):
+    def __init__(self, embed_dim, output_dim, activation_fn, weight=None, share_emb_pro=None, bias=None):
         super().__init__()
         self.dense = nn.Linear(embed_dim, embed_dim)
         self.activation_fn = utils.get_activation_fn(activation_fn)
@@ -259,10 +263,10 @@ class GeneratorLMHead(nn.Module):
         else:
             self.add_one_linear = False
         self.weight = weight
-        if bias_helper is None:
+
+        if bias is None:
             self.bias = nn.Parameter(torch.zeros(output_dim))
-        else:
-            self.bias = bias_helper
+        self.bias = bias
 
     def forward(self, features, masked_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -338,7 +342,7 @@ class GeneratorEncoder(FairseqDecoder):
             activation_fn=args.activation_fn,
             weight=self.sentence_encoder.embed_tokens.weight,
             share_emb_pro=self.sentence_encoder.embed_linear,
-            bias_helper=lmhead_bias_helper,
+            bias=lmhead_bias_helper,
         )
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, masked_tokens=None, return_top_features=False, **unused):
@@ -363,7 +367,7 @@ class GeneratorEncoder(FairseqDecoder):
         if not features_only:
             x = self.output_layer(x, masked_tokens=masked_tokens)
         if return_top_features:
-            return x, (features, extra)
+            return x, features, extra
         return x, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
@@ -383,7 +387,7 @@ class GeneratorEncoder(FairseqDecoder):
 
 
 class DiscEncoder(FairseqDecoder):
-    """Electra discriminator encoder.
+    """ElectraModel discriminator encoder.
 
     Implements the :class:`~fairseq.models.FairseqDecoder` interface required
     by :class:`~fairseq.models.FairseqLanguageModel`.
@@ -458,7 +462,7 @@ class DiscLMHead(nn.Module):
 
     def __init__(self, embed_dim, output_dim):
         super().__init__()
-        self.dense = nn.Linear(embed_dim, output_dim) #, bias=False) # check if it dosen't need bias
+        self.dense = nn.Linear(embed_dim, output_dim)
 
     def forward(self, features, masked_tokens=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -466,6 +470,7 @@ class DiscLMHead(nn.Module):
         if masked_tokens is not None:
             features = features[masked_tokens, :]
         return self.dense(features)
+
 
 class NSDiscLMHead(nn.Module):
     """Head for masked language modeling."""
@@ -480,8 +485,6 @@ class NSDiscLMHead(nn.Module):
 
         self.embed_tokens = embed_tokens
         self.bias = nn.Embedding(embed_tokens.num_embeddings, 1)
-        self.special_emb = nn.Embedding(1, embed_dim)
-        self.special_bias_emb = nn.Parameter(torch.zeros(1))
 
     def forward(self, features, masked_tokens=None, out_helper=None, **kwargs):
         # Only project the unmasked tokens while training,
@@ -492,19 +495,23 @@ class NSDiscLMHead(nn.Module):
         x = self.dense(features)
         x = self.activation_fn(x)
         x = self.layer_norm(x)
-        if out_helper is not None:
-            bias = self.special_bias_emb.view(-1)
-            special_out = (torch.mm(x.view(-1, self.embed_dim), self.special_emb.weight.view(self.embed_dim, 1)) + bias).view(-1, 1)
 
-            weight = self.embed_tokens(out_helper).transpose(2,3).view(-1, self.embed_dim, self.output_dim-1)
-            bias = self.bias(out_helper).view(-1, self.output_dim-1)
-            x = x.view(-1, 1, self.embed_dim)
-            # project back to size of vocabulary with bias
-            x = torch.bmm(x, weight)
-            x = x.view(-1, self.output_dim-1) + bias
-            return torch.cat([x,special_out], -1)
+        if out_helper is not None:
+            # x: Float[bs, seq_len, dim]
+            weight = self.embed_tokens(out_helper).transpose(2, 3)  # Float[bs, seq_len, dim, num_class]
+            bias = self.bias(out_helper).transpose(2, 3)  # Float[bs, seq_len, 1, num_class]
+
+            bs = x.size(0)
+            x = torch.baddbmm(
+                input=bias.view(-1, bias.size(-2), bias.size(-1)),
+                batch1=x.view(-1, 1, x.size(-1)),
+                batch2=weight.view(-1, weight.size(-2), weight.size(-1))
+            )  # Float[bs * seq_len, 1, num_class]
+
+            return x.view(bs, -1, x.size(-1))  # Float[bs, seq_len, num_class]
         else:
             return x
+
 
 @register_model_architecture('electra', 'electra')
 def base_architecture(args):
@@ -527,12 +534,12 @@ def base_architecture(args):
 
 
 @register_model_architecture('electra', 'electra_base')
-def Electra_base_architecture(args):
+def electra_base_architecture(args):
     base_architecture(args)
 
 
 @register_model_architecture('electra', 'electra_small')
-def Electra_small_architecture(args):
+def electra_small_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
@@ -541,8 +548,9 @@ def Electra_small_architecture(args):
 
     base_architecture(args)
 
+
 @register_model_architecture('electra', 'electra_large')
-def Electra_small_architecture(args):
+def electra_small_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
@@ -550,12 +558,3 @@ def Electra_small_architecture(args):
     args.generator_size_divider = getattr(args, 'generator_size_divider', 4)
 
     base_architecture(args)
-
-# @register_model_architecture('Electra', 'xlm')
-# def xlm_architecture(args):
-#     args.encoder_layers = getattr(args, 'encoder_layers', 16)
-#     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1280)
-#     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1280*4)
-#     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
-
-#     base_architecture(args)

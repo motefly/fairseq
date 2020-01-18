@@ -42,7 +42,13 @@ class ElectraLoss(FairseqCriterion):
         if sample_size == 0:
             masked_tokens = None
 
-        gen_logits, disc_output, disc_tokens, _ = model(**sample['net_input'], masked_tokens=masked_tokens, targets=sample['target'])
+        gen_logits, disc_output, disc_tokens, disc_target, _ = model(
+            **sample['net_input'],
+            masked_tokens=masked_tokens,
+            targets=sample['target']
+        )
+        disc_output = disc_output[not_pad_tokens]
+        disc_target = disc_target[not_pad_tokens]
         targets = model.get_targets(sample, [gen_logits])
 
         if sample_size != 0:
@@ -59,18 +65,13 @@ class ElectraLoss(FairseqCriterion):
             ignore_index=self.padding_idx,
         )
 
-        disc_targets = disc_tokens.eq(sample['target'])[not_pad_tokens].long()*(self.args.class_num-1) # torch.ones_like(sample['target'])[not_pad_tokens].long() #  
-
-        # disc_loss = F.binary_cross_entropy_with_logits(disc_output[not_pad_tokens].float().view(-1),
-        #     disc_targets.view(-1), reduction='sum')
-
-
         disc_loss = F.nll_loss(
             F.log_softmax(
-                disc_output[not_pad_tokens.view(-1)].float(), 
-                dim=-1, dtype=torch.float32,
+                disc_output.view(-1, disc_output.size(-1)),
+                dim=-1,
+                dtype=torch.float32,
             ),
-            disc_targets.view(-1), 
+            disc_target.view(-1),
             reduction='sum',
         )
 
@@ -78,11 +79,12 @@ class ElectraLoss(FairseqCriterion):
 
         loss = gen_loss + self.args.loss_lamda * disc_loss * sample_size / disc_sample_size
 
-        tp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) >= 1) & (disc_targets >= 1)).long().sum()
-        fp = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) >= 1) & (disc_targets == 0)).long().sum()
-        fn = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 0) & (disc_targets >= 1)).long().sum()
-        tn = ((torch.argmax(disc_output[not_pad_tokens.view(-1)].float(), -1).view(-1) == 0) & (disc_targets == 0)).long().sum()
-        assert (tp + fp + tn + fn) == disc_targets.size(0), 'invalid size'
+        with torch.no_grad():
+            tp = ((torch.argmax(disc_output.float(), -1).view(-1) != 1) & (disc_target != 1)).long().sum()
+            fp = ((torch.argmax(disc_output.float(), -1).view(-1) != 1) & (disc_target == 1)).long().sum()
+            fn = ((torch.argmax(disc_output.float(), -1).view(-1) == 1) & (disc_target != 1)).long().sum()
+            tn = ((torch.argmax(disc_output.float(), -1).view(-1) == 1) & (disc_target == 1)).long().sum()
+            assert (tp + fp + tn + fn) == disc_target.size(0), 'invalid size'
 
         logging_output = {
             'loss': utils.item(disc_loss.data) if reduce else disc_loss.data,
