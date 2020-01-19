@@ -66,6 +66,8 @@ class SentencePredictionTask(FairseqTask):
         """
         dictionary = Dictionary.load(filename)
         dictionary.add_symbol('<mask>')
+        if 'electra' in args.arch:
+            dictionary.add_symbol('<neither>')
         return dictionary
 
     @classmethod
