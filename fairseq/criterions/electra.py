@@ -79,11 +79,13 @@ class ElectraLoss(FairseqCriterion):
 
         loss = gen_loss + self.args.loss_lamda * disc_loss * sample_size / disc_sample_size
 
+        # import pdb
+        # pdb.set_trace()
         with torch.no_grad():
-            tp = ((torch.argmax(disc_output.float(), -1).view(-1) != 1) & (disc_target != 1)).long().sum()
-            fp = ((torch.argmax(disc_output.float(), -1).view(-1) != 1) & (disc_target == 1)).long().sum()
-            fn = ((torch.argmax(disc_output.float(), -1).view(-1) == 1) & (disc_target != 1)).long().sum()
-            tn = ((torch.argmax(disc_output.float(), -1).view(-1) == 1) & (disc_target == 1)).long().sum()
+            tp = ((torch.argmax(disc_output.float(), -1).view(-1) == disc_target) & (disc_target == 0)).long().sum()
+            fp = ((torch.argmax(disc_output.float(), -1).view(-1) != disc_target) & (disc_target == 1)).long().sum()
+            fn = ((torch.argmax(disc_output.float(), -1).view(-1) != disc_target) & (disc_target == 0)).long().sum()
+            tn = ((torch.argmax(disc_output.float(), -1).view(-1) == disc_target) & (disc_target == 1)).long().sum()
             assert (tp + fp + tn + fn) == disc_target.size(0), 'invalid size'
 
         logging_output = {
