@@ -50,7 +50,8 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
     )
     checkpoint_conds['checkpoint_best.pt'] = (
         val_loss is not None and
-        (not hasattr(save_checkpoint, 'best') or is_better(val_loss, save_checkpoint.best))
+        (not hasattr(save_checkpoint, 'best') or is_better(val_loss, save_checkpoint.best)) and
+        not args.no_best_checkpoints
     )
     checkpoint_conds['checkpoint_last.pt'] = not args.no_last_checkpoints
 

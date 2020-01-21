@@ -406,6 +406,8 @@ def add_checkpoint_args(parser):
                        help='only store last and best checkpoints')
     group.add_argument('--no-last-checkpoints', action='store_true',
                        help='don\'t store last checkpoints')
+    group.add_argument('--no-best-checkpoints', action='store_true',
+                       help='don\'t store best checkpoints')
     group.add_argument('--no-save-optimizer-state', action='store_true',
                        help='don\'t save optimizer-state as part of checkpoint')
     group.add_argument('--best-checkpoint-metric', type=str, default='loss',
