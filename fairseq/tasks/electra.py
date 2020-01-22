@@ -50,6 +50,10 @@ class ElectraTask(FairseqTask):
                             help='probability that a masked token is unmasked')
         parser.add_argument('--random-token-prob', default=0.0, type=float,
                             help='probability of replacing a token with a random token')
+        parser.add_argument('--discriminator-leave-unmasked-prob', default=0.1, type=float,
+                            help='probability that a masked token is unmasked')
+        parser.add_argument('--discriminator-random-token-prob', default=0.1, type=float,
+                            help='probability of replacing a token with a random token')
         parser.add_argument('--freq-weighted-replacement', action='store_true',
                             help='sample random replacement words based on word frequencies')
         parser.add_argument('--mask-whole-words', default=False, action='store_true',

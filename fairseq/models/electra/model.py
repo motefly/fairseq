@@ -140,17 +140,18 @@ class ElectraModel(FairseqLanguageModel):
                 disc_target = replace_tokens.long()
 
                 # decide unmasking and random replacement
-                rand_or_unmask_prob = self.args.random_token_prob + self.args.leave_unmasked_prob
+                rand_or_unmask_prob = (self.args.discriminator_random_token_prob +
+                                       self.args.discriminator_leave_unmasked_prob)
                 if rand_or_unmask_prob > 0.0:
                     rand_or_unmask = torch.rand_like(targets_masked, dtype=gen_x_mask.dtype) < rand_or_unmask_prob
-                    if self.random_token_prob == 0.0:
+                    if self.discriminator_random_token_prob == 0.0:
                         unmask = rand_or_unmask
                         rand_mask = None
-                    elif self.leave_unmasked_prob == 0.0:
+                    elif self.discriminator_leave_unmasked_prob == 0.0:
                         unmask = None
                         rand_mask = rand_or_unmask
                     else:
-                        unmask_prob = self.args.leave_unmasked_prob / rand_or_unmask_prob
+                        unmask_prob = self.args.discriminator_leave_unmasked_prob / rand_or_unmask_prob
                         decision = torch.rand_like(targets_masked, dtype=gen_x_mask.dtype) < unmask_prob
                         unmask = rand_or_unmask & decision
                         rand_mask = rand_or_unmask & (~decision)
