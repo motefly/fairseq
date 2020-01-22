@@ -64,7 +64,6 @@ class ElectraTask(FairseqTask):
 
         # add mask token
         self.mask_idx = dictionary.add_symbol('<mask>')
-        self.neither_idx = dictionary.add_symbol('<neither>')
 
     @classmethod
     def setup_task(cls, args, **kwargs):

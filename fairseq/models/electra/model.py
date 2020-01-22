@@ -37,12 +37,11 @@ class ElectraModel(FairseqLanguageModel):
             'ElectraModel.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.wsc.tar.gz',
         }
 
-    def __init__(self, args, gen_encoder, disc_encoder, mask_idx, neither_idx):
+    def __init__(self, args, gen_encoder, disc_encoder, mask_idx):
         super().__init__(disc_encoder)
         self.generator = gen_encoder
         self.args = args
         self.mask_idx = mask_idx
-        self.neither_idx = neither_idx
 
         # We follow BERT's random weight initialization
         self.apply(init_bert_params)
@@ -107,8 +106,7 @@ class ElectraModel(FairseqLanguageModel):
             gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens, disc_encoder.lm_head.bias.weight)
         else:
             gen_encoder = None
-        return cls(args, gen_encoder, disc_encoder,
-                   task.source_dictionary.index('<mask>'), task.source_dictionary.index('<neither>'))
+        return cls(args, gen_encoder, disc_encoder, task.source_dictionary.index('<mask>'))
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
@@ -139,8 +137,6 @@ class ElectraModel(FairseqLanguageModel):
 
                 replace_tokens = sampled_tokens[:, 0].ne(targets_masked)
                 sampled_tokens[:, 1][replace_tokens] = targets_masked[replace_tokens]
-
-                sampled_tokens[:, 0] = self.neither_idx
 
                 disc_target = replace_tokens.long()
 
