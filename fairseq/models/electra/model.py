@@ -37,10 +37,11 @@ class ElectraModel(FairseqLanguageModel):
             'ElectraModel.large.wsc': 'http://dl.fbaipublicfiles.com/fairseq/models/Generator.large.wsc.tar.gz',
         }
 
-    def __init__(self, args, gen_encoder, disc_encoder, neither_idx):
+    def __init__(self, args, gen_encoder, disc_encoder, mask_idx, neither_idx):
         super().__init__(disc_encoder)
         self.generator = gen_encoder
         self.args = args
+        self.mask_idx = mask_idx
         self.neither_idx = neither_idx
 
         # We follow BERT's random weight initialization
@@ -106,7 +107,8 @@ class ElectraModel(FairseqLanguageModel):
             gen_encoder = GeneratorEncoder(args, task.source_dictionary, disc_encoder.sentence_encoder.embed_tokens, disc_encoder.lm_head.bias.weight)
         else:
             gen_encoder = None
-        return cls(args, gen_encoder, disc_encoder, task.source_dictionary.index('<neither>'))
+        return cls(args, gen_encoder, disc_encoder,
+                   task.source_dictionary.index('<mask>'), task.source_dictionary.index('<neither>'))
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, masked_tokens=None, targets=None, **kwargs):
         if classification_head_name is not None:
@@ -123,32 +125,30 @@ class ElectraModel(FairseqLanguageModel):
             )  # Float[num_masked, vocab]
 
             with torch.no_grad():
-                gen_x_all = self.generator.lm_head(features, masked_tokens=None)
-                sample_probs = torch.softmax(gen_x_all.detach(), -1, dtype=torch.float32)  # Float[bs, seq_len, vocab]
-                sample_probs = sample_probs.view(-1, sample_probs.size(-1))  # Float[bs * seq_len, vocab]
+                sample_probs = torch.softmax(gen_x_mask.detach(), -1, dtype=torch.float32)  # Float[num_masked, vocab]
+                sample_probs = sample_probs.view(-1, sample_probs.size(-1))  # Float[num_masked, vocab]
                 sampled_tokens = torch.multinomial(
                     sample_probs, self.args.class_num, replacement=True
-                ).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)  # Float[bs, seq_len, class_num]
+                ).view(gen_x_mask.size(0), self.args.class_num)  # Long[num_masked, class_num]
 
                 src_tokens = src_tokens.clone()
-                assert masked_tokens is not None  # masked_tokens : Float[bs, seq_len]
-                src_tokens[masked_tokens] = sampled_tokens[:, :, 0][masked_tokens]
+                assert masked_tokens is not None  # masked_tokens : Bool[bs, seq_len]
+                src_tokens[masked_tokens] = self.mask_idx
 
-                # for replaced tokens, the correct label is 1-th element (the target)
-                replace_tokens = src_tokens.ne(targets)
-                sampled_tokens[:, :, 1][replace_tokens] = targets[replace_tokens]
+                targets_masked = targets[masked_tokens]  # Long[num_masked]
 
-                # for non-replaced tokens, the correct label is 0-th element (the <neither> token)
-                sampled_tokens[:, :, 0] = self.neither_idx
+                replace_tokens = sampled_tokens[:, 0].ne(targets_masked)
+                sampled_tokens[:, 1][replace_tokens] = targets_masked[replace_tokens]
 
-                # generate targets according to the rule mentioned above
+                sampled_tokens[:, 0] = self.neither_idx
+
                 disc_target = replace_tokens.long()
 
         disc_x, extra = self.decoder(
             src_tokens,
             features_only=features_only,
             return_all_hiddens=return_all_hiddens,
-            masked_tokens=None,  # for discriminator, predict all of the tokens
+            masked_tokens=masked_tokens,
             out_helper=sampled_tokens if self.args.task == 'electra' else None,
             **kwargs
         )

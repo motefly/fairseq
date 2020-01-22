@@ -33,8 +33,6 @@ class ElectraLoss(FairseqCriterion):
         mask_idx = self.task.dictionary.index('<mask>')
         masked_tokens = sample['net_input']['src_tokens'].eq(mask_idx) # masked_tokens = sample['target'].ne(self.padding_idx)
         
-        not_pad_tokens = sample['target'].ne(self.padding_idx)
-        
         sample_size = masked_tokens.int().sum().item()
 
         # (Rare case) When all tokens are masked, the model results in empty
@@ -47,8 +45,6 @@ class ElectraLoss(FairseqCriterion):
             masked_tokens=masked_tokens,
             targets=sample['target']
         )
-        disc_output = disc_output[not_pad_tokens]
-        disc_target = disc_target[not_pad_tokens]
         targets = model.get_targets(sample, [gen_logits])
 
         if sample_size != 0:
@@ -75,7 +71,7 @@ class ElectraLoss(FairseqCriterion):
             reduction='sum',
         )
 
-        disc_sample_size = not_pad_tokens.int().sum().item()
+        disc_sample_size = disc_target.numel()
 
         loss = gen_loss + self.args.loss_lamda * disc_loss * sample_size / disc_sample_size
 
