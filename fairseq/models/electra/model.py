@@ -498,17 +498,16 @@ class NSDiscLMHead(nn.Module):
 
         if out_helper is not None:
             # x: Float[bs, seq_len, dim]
-            weight = self.embed_tokens(out_helper).transpose(2, 3)  # Float[bs, seq_len, dim, num_class]
-            bias = self.bias(out_helper).transpose(2, 3)  # Float[bs, seq_len, 1, num_class]
+            weight = self.embed_tokens(out_helper).transpose(-2, -1)  # Float[bs, seq_len, dim, num_class]
+            bias = self.bias(out_helper).transpose(-2, -1)  # Float[bs, seq_len, 1, num_class]
 
-            bs = x.size(0)
             x = torch.baddbmm(
                 input=bias.view(-1, bias.size(-2), bias.size(-1)),
                 batch1=x.view(-1, 1, x.size(-1)),
                 batch2=weight.view(-1, weight.size(-2), weight.size(-1))
             )  # Float[bs * seq_len, 1, num_class]
 
-            return x.view(bs, -1, x.size(-1))  # Float[bs, seq_len, num_class]
+            return x.view(-1, x.size(-1))  # Float[bs, seq_len, num_class]
         else:
             return x
 
