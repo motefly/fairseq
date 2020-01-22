@@ -144,10 +144,10 @@ class ElectraModel(FairseqLanguageModel):
                                        self.args.discriminator_leave_unmasked_prob)
                 if rand_or_unmask_prob > 0.0:
                     rand_or_unmask = torch.rand_like(targets_masked, dtype=gen_x_mask.dtype) < rand_or_unmask_prob
-                    if self.discriminator_random_token_prob == 0.0:
+                    if self.args.discriminator_random_token_prob == 0.0:
                         unmask = rand_or_unmask
                         rand_mask = None
-                    elif self.discriminator_leave_unmasked_prob == 0.0:
+                    elif self.args.discriminator_leave_unmasked_prob == 0.0:
                         unmask = None
                         rand_mask = rand_or_unmask
                     else:
