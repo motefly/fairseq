@@ -131,7 +131,6 @@ class ElectraModel(FairseqLanguageModel):
 
                 src_tokens = src_tokens.clone()
                 assert masked_tokens is not None  # masked_tokens : Bool[bs, seq_len]
-                src_tokens[masked_tokens] = self.mask_idx
 
                 targets_masked = targets[masked_tokens]  # Long[num_masked]
 
@@ -139,6 +138,31 @@ class ElectraModel(FairseqLanguageModel):
                 sampled_tokens[:, 1][replace_tokens] = targets_masked[replace_tokens]
 
                 disc_target = replace_tokens.long()
+
+                # decide unmasking and random replacement
+                rand_or_unmask_prob = self.args.random_token_prob + self.args.leave_unmasked_prob
+                if rand_or_unmask_prob > 0.0:
+                    rand_or_unmask = torch.rand_like(targets_masked, dtype=gen_x_mask.dtype) < rand_or_unmask_prob
+                    if self.random_token_prob == 0.0:
+                        unmask = rand_or_unmask
+                        rand_mask = None
+                    elif self.leave_unmasked_prob == 0.0:
+                        unmask = None
+                        rand_mask = rand_or_unmask
+                    else:
+                        unmask_prob = self.args.leave_unmasked_prob / rand_or_unmask_prob
+                        decision = torch.rand_like(targets_masked, dtype=gen_x_mask.dtype) < unmask_prob
+                        unmask = rand_or_unmask & decision
+                        rand_mask = rand_or_unmask & (~decision)
+                else:
+                    unmask = rand_mask = None
+
+                replace_with = torch.full_like(targets_masked, self.mask_idx)
+                if unmask is not None:
+                    replace_with[unmask] = src_tokens[masked_tokens][unmask]
+                if rand_mask is not None:
+                    replace_with[rand_mask] = sampled_tokens[:, 0][rand_mask]
+                src_tokens[masked_tokens] = replace_with
 
         disc_x, extra = self.decoder(
             src_tokens,
