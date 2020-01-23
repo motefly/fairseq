@@ -131,8 +131,8 @@ class ElectraModel(FairseqLanguageModel):
                 ).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)  # Float[bs, seq_len, class_num]
 
                 src_tokens = src_tokens.clone()
-                assert masked_tokens is not None  # masked_tokens : Float[bs, seq_len]
-                src_tokens[masked_tokens] = sampled_tokens[:, :, 0][masked_tokens]
+                if masked_tokens is not None:  # masked_tokens : Float[bs, seq_len]
+                    src_tokens[masked_tokens] = sampled_tokens[:, :, 0][masked_tokens]
 
                 # for replaced tokens, the correct label is 1-th element (the target)
                 replace_tokens = src_tokens.ne(targets)
