@@ -7,9 +7,10 @@ import math
 
 import torch
 import torch.nn.functional as F
+import scipy.stats as stats
+import numpy as np
 
 from fairseq import utils
-
 from . import FairseqCriterion, register_criterion
 
 
@@ -32,7 +33,7 @@ class SentencePredictionCriterion(FairseqCriterion):
         3) logging outputs to display while training
         """
         assert hasattr(model, 'classification_heads') and \
-            'sentence_classification_head' in model.classification_heads, \
+               'sentence_classification_head' in model.classification_heads, \
             "model must provide sentence classification head for --criterion=sentence_prediction"
 
         logits, _ = model(
@@ -49,12 +50,12 @@ class SentencePredictionCriterion(FairseqCriterion):
                 targets,
                 reduction='sum',
             )
-            tp = ((logits[:,0] <= logits[:,1]) & (targets == 1)).long().sum()
-            fp = ((logits[:,0] <= logits[:,1]) & (targets == 0)).long().sum()
-            fn = ((logits[:,0] > logits[:,1]) & (targets == 1)).long().sum()
-            tn = ((logits[:,0] > logits[:,1]) & (targets == 0)).long().sum()
-            assert (tp + fp + tn + fn) == targets.size(0), 'invalid size'
-
+            if self.args.num_classes == 2:
+                tp = ((logits[:, 0] <= logits[:, 1]) & (targets == 1)).long().sum()
+                fp = ((logits[:, 0] <= logits[:, 1]) & (targets == 0)).long().sum()
+                fn = ((logits[:, 0] > logits[:, 1]) & (targets == 1)).long().sum()
+                tn = ((logits[:, 0] > logits[:, 1]) & (targets == 0)).long().sum()
+                assert (tp + fp + tn + fn) == targets.size(0), 'invalid size'
         else:
             logits = logits.squeeze().float()
             targets = targets.float()
@@ -76,10 +77,14 @@ class SentencePredictionCriterion(FairseqCriterion):
             logging_output.update(
                 ncorrect=(preds == targets).sum().item()
             )
-            logging_output.update(tp = utils.item(tp.data) if reduce else tp.data)
-            logging_output.update(fp = utils.item(fp.data) if reduce else fp.data)
-            logging_output.update(fn = utils.item(fn.data) if reduce else fn.data)
-            logging_output.update(tn = utils.item(tn.data) if reduce else tn.data)
+            if self.args.num_classes == 2:
+                logging_output.update(tp=utils.item(tp.data) if reduce else tp.data)
+                logging_output.update(fp=utils.item(fp.data) if reduce else fp.data)
+                logging_output.update(fn=utils.item(fn.data) if reduce else fn.data)
+                logging_output.update(tn=utils.item(tn.data) if reduce else tn.data)
+        else:
+            logging_output.update(x=logits.detach().cpu().numpy())
+            logging_output.update(y=targets.detach().cpu().numpy())
         return loss, sample_size, logging_output
 
     @staticmethod
@@ -99,22 +104,31 @@ class SentencePredictionCriterion(FairseqCriterion):
 
         if len(logging_outputs) > 0 and 'ncorrect' in logging_outputs[0]:
             ncorrect = sum(log.get('ncorrect', 0) for log in logging_outputs)
-            agg_output.update(accuracy=ncorrect/nsentences)
+            agg_output.update(accuracy=ncorrect / nsentences)
 
             tp_sum = sum(log.get('tp', 0) for log in logging_outputs)
             fp_sum = sum(log.get('fp', 0) for log in logging_outputs)
             fn_sum = sum(log.get('fn', 0) for log in logging_outputs)
             tn_sum = sum(log.get('tn', 0) for log in logging_outputs)
-            assert tp_sum + fp_sum + fn_sum + tn_sum == sample_size, 'invalid size when aggregating'
-            acc = (tp_sum + tn_sum) / sample_size
-            tmp = 2 * tp_sum + fp_sum + fn_sum
-            f1 = (2 * tp_sum) / tmp if tmp else 0
-            tmp = (tp_sum + fp_sum) * (tp_sum + fn_sum) * (tn_sum + fp_sum) * (tn_sum + fn_sum)
-            mcc = (tp_sum * tn_sum - fp_sum * fn_sum) / (tmp ** 0.5) if tmp else 0
+            if tp_sum + fp_sum + fn_sum + tn_sum > 0:
+                assert tp_sum + fp_sum + fn_sum + tn_sum == sample_size, 'invalid size when aggregating'
+                acc = (tp_sum + tn_sum) / sample_size
+                tmp = 2 * tp_sum + fp_sum + fn_sum
+                f1 = (2 * tp_sum) / tmp if tmp else 0
+                tmp = (tp_sum + fp_sum) * (tp_sum + fn_sum) * (tn_sum + fp_sum) * (tn_sum + fn_sum)
+                mcc = (tp_sum * tn_sum - fp_sum * fn_sum) / (tmp ** 0.5) if tmp else 0
+                agg_output.update(f1=f1)
+                agg_output.update(mcc=mcc)
+                agg_output.update(acc_f1=0.5 * (acc + f1))
 
-            agg_output.update(f1=f1)
-            agg_output.update(mcc=mcc)
-            agg_output.update(acc_f1=0.5 * (acc + f1))
+        if len(logging_outputs) > 0 and 'x' in logging_outputs[0]:
+            x = np.concatenate([log.get('x', np.array([])) for log in logging_outputs])
+            y = np.concatenate([log.get('y', np.array([])) for log in logging_outputs])
+            pearson = stats.pearsonr(x, y)[0]
+            spearman = stats.spearmanr(x, y)[0]
+            agg_output.update(pearson=pearson)
+            agg_output.update(spearman=spearman)
+            agg_output.update(pearson_spearman=0.5 * (pearson + spearman))
 
         if sample_size != ntokens:
             agg_output['nll_loss'] = loss_sum / ntokens / math.log(2)
