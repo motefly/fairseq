@@ -127,7 +127,7 @@ class ElectraModel(FairseqLanguageModel):
                 sample_probs = torch.softmax(gen_x_all.detach(), -1, dtype=torch.float32)  # Float[bs, seq_len, vocab]
                 sample_probs = sample_probs.view(-1, sample_probs.size(-1))  # Float[bs * seq_len, vocab]
                 sampled_tokens = torch.multinomial(
-                    sample_probs, self.args.class_num, replacement=True
+                    sample_probs, self.args.class_num, replacement=False
                 ).view(src_tokens.size(0), src_tokens.size(1), self.args.class_num)  # Float[bs, seq_len, class_num]
 
                 src_tokens = src_tokens.clone()
